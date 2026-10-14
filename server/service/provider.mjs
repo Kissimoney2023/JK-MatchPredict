@@ -53,6 +53,13 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
           headers: headers(key),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
+        if (!response.ok) {
+          // Diagnostics for the function logs; never includes the API key.
+          const detail = (await response.text().catch(() => '')).slice(0, 300);
+          console.warn(
+            `[provider:${kind}] HTTP ${response.status} for ${path.split('?')[0]}: ${detail}`,
+          );
+        }
         if (!response.ok)
           throw new AppError(
             response.status === 429 ? 429 : 502,
@@ -60,6 +67,13 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
             `${name} request failed. Check plan access, API key and quota.`,
           );
         const body = await response.json();
+        if ((body.errors && Object.keys(body.errors).length) || body.errorCode) {
+          const detail = JSON.stringify(body.errors ?? body.message ?? body.errorCode).slice(
+            0,
+            300,
+          );
+          console.warn(`[provider:${kind}] rejected ${path.split('?')[0]}: ${detail}`);
+        }
         if ((body.errors && Object.keys(body.errors).length) || body.errorCode)
           throw new AppError(
             502,
