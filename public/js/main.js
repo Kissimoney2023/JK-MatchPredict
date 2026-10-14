@@ -10,6 +10,12 @@ import {renderMatches} from './views/matches.js';
 import {exportPicks, loadPicks} from './views/picks.js';
 import {loadStandings} from './views/standings.js';
 import {loadInsights} from './views/insights.js';
+import {
+  initAccountUi,
+  renderAccount,
+  showLoginConfirmation,
+  takeLoginToken,
+} from './views/account.js';
 
 // ---- Data loading ---------------------------------------------------------
 
@@ -65,6 +71,9 @@ async function initialize() {
     state.providers = status.providers;
     state.connected = status.connected;
     state.storage = status.storage;
+    state.accounts = status.accounts ?? {enabled: false};
+    state.account = status.account ?? null;
+    renderAccount();
     renderConnection();
     if (status.connected) {
       const catalog = await api('leagues');
@@ -196,4 +205,8 @@ $('#settle').onclick = settlePicks;
 $('#export').onclick = exportPicks;
 document.addEventListener('click', onButtonClick);
 
-run(initialize);
+initAccountUi();
+const pendingLogin = takeLoginToken();
+run(initialize).then(() => {
+  if (pendingLogin) showLoginConfirmation(pendingLogin);
+});

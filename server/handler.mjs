@@ -2,10 +2,11 @@ import {randomBytes, timingSafeEqual} from 'node:crypto';
 import {createService, AppError, hash} from './service.mjs';
 import {createStore} from './store/index.mjs';
 
-const SESSION_COOKIE = /(?:^|;\s*)jk_session=([a-f0-9]{64})(?:;|$)/;
+const TOKEN_FORMAT = /^[a-f0-9]{64}$/;
 const CLIENT_LIMIT = 45;
 const CLIENT_WINDOW_MS = 60_000;
 const MAX_BODY = 4096;
+const ANONYMOUS_COOKIE_SECONDS = 31_536_000;
 
 /** Best-effort client address from the platform's proxy headers. */
 const clientIp = (request) =>
@@ -13,27 +14,52 @@ const clientIp = (request) =>
   request.headers.get('x-real-ip') ||
   'local';
 
-/** Builds a Web-standard `(Request) => Response` handler around a lazily created service. */
+/** Value of one cookie from a Cookie header, or null. */
+function cookieValue(header, name) {
+  for (const part of String(header || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
+  }
+  return null;
+}
+
+/**
+ * Builds a Web-standard `(Request) => Response` handler around a lazily created service.
+ *
+ * Identity: every browser gets an anonymous profile cookie (`jk_session`). A signed-in person
+ * also carries `jk_auth`; their picks then live under their account instead of the browser.
+ */
 export function makeHandler(deps) {
   return async (request) => {
     const url = new URL(request.url);
-    const token =
-      request.headers.get('cookie')?.match(SESSION_COOKIE)?.[1] || randomBytes(32).toString('hex');
-    const headers = {
+    const cookies = request.headers.get('cookie');
+    const existing = cookieValue(cookies, 'jk_session');
+    const token = TOKEN_FORMAT.test(existing || '') ? existing : randomBytes(32).toString('hex');
+    const authToken = cookieValue(cookies, 'jk_auth');
+    const secure = url.protocol === 'https:' ? '; Secure' : '';
+    const cookieAttributes = `HttpOnly; SameSite=Lax; Path=/${secure}`;
+
+    const headers = new Headers({
       'Content-Type': 'application/json',
       'Cache-Control': 'private, no-store',
-      'Set-Cookie': `jk_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000${url.protocol === 'https:' ? '; Secure' : ''}`,
-    };
+    });
+    headers.append(
+      'Set-Cookie',
+      `jk_session=${token}; ${cookieAttributes}; Max-Age=${ANONYMOUS_COOKIE_SECONDS}`,
+    );
     const json = (d, status = 200) => new Response(JSON.stringify(d), {status, headers});
 
     try {
       const service = deps();
       await service.budget('client-' + hash(clientIp(request)), CLIENT_LIMIT, CLIENT_WINDOW_MS);
       const action = url.searchParams.get('action') || 'status';
-      const sid = hash(token);
+      const anonymousSid = hash(token);
+      const account = await service.accounts.resolve(authToken);
+      const sid = account?.id ?? anonymousSid;
 
       if (request.method === 'GET') {
-        if (action === 'status') return json(service.status());
+        if (action === 'status')
+          return json({...service.status(), account: account ? {email: account.email} : null});
         if (action === 'leagues') return json(await service.catalog());
         if (action === 'fixtures') return json(await service.fixtures(url.searchParams));
         if (action === 'insights')
@@ -69,9 +95,32 @@ export function makeHandler(deps) {
       } catch {
         throw new AppError(400, 'json', 'Invalid JSON.');
       }
+
       if (body.action === 'save')
         return json(await service.save(sid, body.forecastId, body.outcome));
       if (body.action === 'settle') return json(await service.settlePicks(sid));
+
+      if (body.action === 'login-request')
+        return json(
+          await service.accounts.requestLogin({
+            email: body.email,
+            ip: clientIp(request),
+            origin: url.origin,
+          }),
+        );
+      if (body.action === 'login-verify') {
+        const result = await service.accounts.verifyLogin({token: body.token, anonymousSid});
+        headers.append(
+          'Set-Cookie',
+          `jk_auth=${result.authToken}; ${cookieAttributes}; Max-Age=${result.maxAgeSeconds}`,
+        );
+        return json({email: result.email, merged: result.merged});
+      }
+      if (body.action === 'logout') {
+        await service.accounts.logout(authToken);
+        headers.append('Set-Cookie', `jk_auth=; ${cookieAttributes}; Max-Age=0`);
+        return json({ok: true});
+      }
       throw new AppError(404, 'route', 'Unknown action.');
     } catch (e) {
       if (!(e instanceof AppError)) console.error('football handler error', e);

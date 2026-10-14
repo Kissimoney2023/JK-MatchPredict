@@ -8,6 +8,8 @@ const TTL_BY_PREFIX = {
   'cache/': 2 * DAY,
   'cooldown/': DAY,
   'planblock/': DAY,
+  'magic/': DAY,
+  'auth/': 90 * DAY,
   'listing/': 7 * DAY,
   'forecast/': 30 * DAY,
 };

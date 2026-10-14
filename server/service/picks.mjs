@@ -84,5 +84,25 @@ export function createPicks({now, storage, lookup}) {
     return {checked: eligible.length, settled: changes.size, unavailable};
   }
 
-  return {picks, save, settlePicks};
+  /**
+   * Copies the picks of `sourceId` (an anonymous browser profile) into `targetId` (an account),
+   * skipping matches the account already has. Safe to repeat. Returns how many were added.
+   */
+  async function mergePicks(targetId, sourceId) {
+    const source = await picks(sourceId);
+    if (!source.length) return 0;
+    let added = 0;
+    await atomic('picks/' + targetId, (old) => {
+      const items = old?.items ?? [];
+      const have = new Set(items.map((x) => x.canonical));
+      const extra = source.filter((x) => !have.has(x.canonical));
+      added = extra.length;
+      if (!extra.length) return undefined;
+      const merged = [...items, ...extra].sort((a, b) => b.createdAt - a.createdAt);
+      return {items: merged.slice(0, MAX_PICKS)};
+    });
+    return added;
+  }
+
+  return {picks, save, settlePicks, mergePicks};
 }

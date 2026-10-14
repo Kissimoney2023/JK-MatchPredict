@@ -12,6 +12,8 @@ export const state = {
   providers: [],
   showAllLeagues: false,
   storage: '',
+  accounts: {enabled: false},
+  account: null,
   source: '',
   at: null,
   listing: null,

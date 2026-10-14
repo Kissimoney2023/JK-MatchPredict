@@ -10,6 +10,7 @@ import {createInsights} from './service/insights.mjs';
 import {createForecast} from './service/forecast.mjs';
 import {createPicks} from './service/picks.mjs';
 import {createPrefetch} from './service/prefetch.mjs';
+import {createAccounts} from './service/accounts.mjs';
 
 export {AppError} from './errors.mjs';
 export {hash, dates} from './util.mjs';
@@ -47,7 +48,8 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
     history,
     strikerApi,
   });
-  const {picks, save, settlePicks} = createPicks({now, storage, lookup});
+  const {picks, save, settlePicks, mergePicks} = createPicks({now, storage, lookup});
+  const accounts = createAccounts({env, store, storage, fetcher, now, mergePicks});
   const prefetch = createPrefetch({
     env,
     now,
@@ -62,6 +64,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
   const status = () => ({
     connected: !!(env.API_FOOTBALL_KEY || env.FOOTBALL_DATA_ORG_KEY),
     storage: store.kind ?? 'unknown',
+    accounts: accounts.info(),
     providers: [
       {name: 'API-Football', configured: !!env.API_FOOTBALL_KEY, role: 'Primary'},
       {name: 'football-data.org', configured: !!env.FOOTBALL_DATA_ORG_KEY, role: 'Fallback'},
@@ -79,6 +82,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
     picks,
     save,
     settlePicks,
+    accounts,
     prefetch: prefetch.run,
     budget: storage.budget,
   };

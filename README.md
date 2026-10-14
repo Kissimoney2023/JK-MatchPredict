@@ -37,6 +37,7 @@ API_FOOTBALL_DAILY_LIMIT=100
 
 - `API_FOOTBALL_KEY`: direct API-Football/API-Sports key. A RapidAPI credential is not interchangeable.
 - `FOOTBALL_DATA_ORG_KEY`: football-data.org API token.
+- `RESEND_API_KEY`, `AUTH_FROM_EMAIL`, optional `SITE_URL`: email sign-in (see Accounts).
 - `STRIKERAPI_API_KEY`: optional StrikerAPI key (see StrikerAPI above). `STRIKERAPI_MONTHLY_CREDITS`: credit cap, default 450. `STRIKERAPI_MARKET_FORECASTS`: `off` disables market-based forecasts.
 - `CRON_SECRET`: secret for `/api/prefetch` (see Scheduled prefetch). `PREFETCH_COMPETITIONS`: optional competition codes to warm, default `CL`.
 - `API_FOOTBALL_DAILY_LIMIT`: optional daily application budget; default 100. Change it only to match your allowance. Other apps using the same key can consume the provider's quota independently.
@@ -67,6 +68,19 @@ npm run build
 ```
 
 The build copies public assets and fonts into `dist` and verifies that the function bundles with esbuild. Automated tests use mocked football responses and a conditional-write storage adapter; they do not prove paid/free plan coverage or real API accuracy.
+
+## Accounts (optional email sign-in)
+
+Without an account, picks live in a private server-side profile tied to the browser's cookie. With accounts, a person signs in with an email magic link and their picks follow them to every device. Signing in is optional; picks saved in the browser are merged into the account on first sign-in (duplicates are skipped).
+
+**Requirements.** Accounts switch themselves off (the Sign in button is hidden) unless both are in place:
+
+1. **Durable storage**: connect Upstash Redis in Vercel Storage. The temporary in-memory store is refused, because accounts and sessions would vanish between requests.
+2. **An email sender**: `RESEND_API_KEY` and `AUTH_FROM_EMAIL` (for example `JK MatchPredict <login@yourdomain.com>`). The sending domain must be verified in Resend, otherwise Resend only delivers to your own address. Optional `SITE_URL` (for example `https://your-app.vercel.app`) fixes the origin used in email links; without it the request's own origin is used.
+
+**How it works.** The email contains `<site>/?login=<token>`. Opening it shows a "Finish signing in" button, and only pressing it signs in; this stops mail scanners that merely fetch links from using up the one-time token. The token is 256-bit random, stored hashed, valid for 15 minutes and usable once (also under concurrent use). The browser address bar is cleaned as soon as the page loads. A successful sign-in sets an `HttpOnly`, `SameSite=Lax`, `Secure` cookie (`jk_auth`, 90 days) that is separate from the anonymous profile cookie, so signing out simply removes it. The same email always maps to the same account, and the reply to a sign-in request never reveals whether an account exists.
+
+**Limits.** Three sign-in emails per address per 15 minutes and ten per client address per hour. Accounts store only the email address and the picks; there are no passwords and no profile data. Anyone with access to the mailbox can sign in, as with any magic-link system.
 
 ## StrikerAPI (optional enrichment)
 
@@ -146,6 +160,7 @@ Cache and quota updates use Redis with atomic compare-and-set writes. Cache, quo
   - `storage.mjs` (store reads, atomic updates, budgets), `provider.mjs` (cached, rate-limited provider client), `normalize.mjs` (fixture shapes and league mapping),
   - `catalog.mjs`, `fixtures.mjs`, `lookup.mjs` (single-match and cross-provider verification), `forecast.mjs` and `picks.mjs`.
 - `server/service/prefetch.mjs` (budgeted cache warm-up), `history.mjs` (team match history) and `standings.mjs`; `api/prefetch.mjs` is the endpoint.
+- `server/service/accounts.mjs`: magic-link sign-in, sessions and pick merging; `server/handler.mjs` adds the login routes and cookies.
 - `server/strikerapi.mjs` (odds conversion, Shin devig, name matching, Elo maths) and `server/service/strikerapi.mjs` (cached StrikerAPI lookups).
 - `server/form.mjs` (recent form and head-to-head from raw histories) and `server/service/insights.mjs`.
 - `server/model.mjs`: normalization and experimental goal model.

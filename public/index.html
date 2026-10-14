@@ -25,6 +25,7 @@
           ><button data-view="method">How it works</button>
         </nav>
         <span class="virtual">VIRTUAL PICKS ONLY</span>
+        <button id="account-button" class="secondary hidden">Sign in</button>
       </div>
     </header>
     <main id="main">
@@ -127,7 +128,7 @@
             ><button id="export" class="secondary">Export picks</button>
           </div>
         </div>
-        <p class="muted">
+        <p id="picks-note" class="muted">
           Picks lock when saved and live in a private server-side browser profile. Keep this
           browser’s cookies to retain access. This is not a cross-device account.
         </p>
@@ -193,6 +194,10 @@
     <dialog id="analysis">
       <button id="close-analysis" class="close" aria-label="Close match analysis">×</button>
       <div id="analysis-body"></div>
+    </dialog>
+    <dialog id="auth-dialog">
+      <button id="close-auth" class="close" aria-label="Close">×</button>
+      <div id="auth-body"></div>
     </dialog>
     <script type="module" src="/js/main.js"></script>
   </body>
