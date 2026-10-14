@@ -3,3 +3,4 @@ dist
 .vercel
 .vercel-verification
 package-lock.json
+.claude

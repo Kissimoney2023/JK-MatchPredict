@@ -1,0 +1,6 @@
+Skills in this folder (backtesting, dispatch, edge-detection, elo-ratings, goalscorer-prop-modeling,
+match-lookup, match-preview, odds-analysis, odds-explorer, player-scouting, poisson-score-models,
+probability-calibration, strikerapi-tool, team-analysis, walk-forward-validation, xg-analysis)
+are from https://github.com/noahowsh/strikerapi-mcp (commit a7069b1), MIT licensed, see STRIKERAPI-LICENSE.
+They call the hosted StrikerAPI MCP server and need STRIKERAPI_API_KEY there; the methodology skills
+(Poisson, calibration, backtesting) also work without it.
