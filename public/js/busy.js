@@ -9,7 +9,7 @@ function setBusy(on) {
   $$('[data-analyze],[data-save]').forEach((b) => {
     b.disabled = on || (b.hasAttribute('data-save') && !!state.analysis?.demo);
   });
-  $('#refresh').textContent = on ? 'Loading…' : '↻ Refresh';
+  $('#refresh').textContent = on ? 'Loading…' : 'Refresh';
 }
 
 /** Runs an async action with the UI locked, showing any error in `target`. */

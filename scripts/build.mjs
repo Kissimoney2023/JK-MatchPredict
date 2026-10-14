@@ -8,6 +8,15 @@ await mkdir('dist', {recursive: true});
 await cp('public', 'dist', {recursive: true});
 await cp('server/analysis.mjs', 'dist/analysis.js');
 
+// Self-hosted fonts keep the CSP strict (no third-party font hosts).
+const FONTS = [
+  ...[400, 500, 600, 700].map((w) => ['fira-sans', `fira-sans-latin-${w}-normal.woff2`]),
+  ...[500, 600].map((w) => ['fira-code', `fira-code-latin-${w}-normal.woff2`]),
+];
+await mkdir('dist/fonts', {recursive: true});
+for (const [pkg, file] of FONTS)
+  await cp(`node_modules/@fontsource/${pkg}/files/${file}`, `dist/fonts/${file}`);
+
 // 2. Verify the Netlify function bundles (Netlify bundles it again at deploy time).
 await build({
   entryPoints: ['netlify/functions/football.mjs'],

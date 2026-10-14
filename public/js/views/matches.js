@@ -17,7 +17,7 @@ const team = (name) =>
 
 function matchCard(f) {
   const action = isOpen(f)
-    ? `<button class="text-button" data-analyze="${esc(f.key)}" ${state.busy ? 'disabled' : ''}>Predict & view tips ↗</button>`
+    ? `<button class="text-button" data-analyze="${esc(f.key)}" ${state.busy ? 'disabled' : ''}>Predict &amp; view tips</button>`
     : `<small>${closedLabel(f)}</small>`;
   return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${f.demo ? 'SAMPLE' : esc(f.status)}</span></div><div class="teams">${team(f.home)}<span class="vs">${esc(scoreText(f))}</span>${team(f.away)}</div><div class="match-bottom"><small>${esc(formatDate(f.kickoff))}<br>Your local time</small>${action}</div></article>`;
 }

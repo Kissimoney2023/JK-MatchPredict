@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#091623" />
+    <meta name="theme-color" content="#0f172a" />
     <meta
       name="description"
       content="Explore football matches, compare outcome probabilities and track virtual picks with JK MatchPredict."
@@ -12,19 +12,22 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
+    <a class="skip-link" href="#main">Skip to content</a>
     <header>
-      <a class="brand" href="/"
-        ><span class="mark">JK</span
-        ><span>MatchPredict<small>FOOTBALL INTELLIGENCE</small></span></a
-      >
-      <nav aria-label="Main navigation">
-        <button data-view="matches" class="active">Match explorer</button
-        ><button data-view="picks">My picks <span id="pick-count">0</span></button
-        ><button data-view="method">How it works</button>
-      </nav>
-      <span class="virtual">VIRTUAL PICKS ONLY</span>
+      <div class="header-inner">
+        <a class="brand" href="/"
+          ><span class="mark">JK</span
+          ><span>MatchPredict<small>FOOTBALL INTELLIGENCE</small></span></a
+        >
+        <nav aria-label="Main navigation">
+          <button data-view="matches" class="active">Match explorer</button
+          ><button data-view="picks">My picks <span id="pick-count">0</span></button
+          ><button data-view="method">How it works</button>
+        </nav>
+        <span class="virtual">VIRTUAL PICKS ONLY</span>
+      </div>
     </header>
-    <main>
+    <main id="main">
       <section class="hero">
         <div>
           <div class="eyebrow">READ THE GAME. KNOW THE PROBABILITIES.</div>
@@ -35,7 +38,22 @@
           </p>
         </div>
         <div class="hero-stat">
-          <span class="orb">⚽</span>
+          <svg
+            class="orb"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 7.5l3.8 2.8-1.45 4.45h-4.7L8.2 10.3z" />
+            <path
+              d="M12 7.5V2.2M15.8 10.3l5.1-1.6M14.35 14.75l3.1 4.3M9.65 14.75l-3.1 4.3M8.2 10.3L3.1 8.7"
+            />
+          </svg>
           <div class="eyebrow">THREE OUTCOMES. ONE PICTURE.</div>
           <div class="sample">
             <span>1 <b>Home</b></span
@@ -70,7 +88,7 @@
                 <div class="eyebrow" id="competition-country">MATCH EXPLORER</div>
                 <h2 id="competition-title">All available leagues</h2>
               </div>
-              <button id="refresh" class="secondary">↻ Refresh</button>
+              <button id="refresh" class="secondary">Refresh</button>
             </div>
             <form id="filters">
               <label>From · UTC<input id="date-from" type="date" required /></label
