@@ -19,6 +19,10 @@ const PER_MINUTE_LIMIT = 9;
 const COOLDOWN_MS = MINUTE;
 const REQUEST_TIMEOUT_MS = 10_000;
 
+/** Short single-line text for error messages (provider replies never contain our keys). */
+const brief = (v) =>
+  (typeof v === 'string' ? v : JSON.stringify(v)).replace(/\s+/g, ' ').trim().slice(0, 140);
+
 /**
  * Returns `provider(kind, path, ttl)`: a cached, de-duplicated, budgeted and
  * cooldown-protected GET against API-Football (`ap`) or football-data.org (`fd`).
@@ -38,7 +42,13 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
 
     const cooldown = await read('cooldown/' + kind);
     if (cooldown?.until > now())
-      throw new AppError(429, 'cooldown', `${name} is cooling down after an API error.`);
+      throw new AppError(
+        429,
+        'cooldown',
+        cooldown.reason
+          ? `${cooldown.reason} (${name} is paused for a minute.)`
+          : `${name} is cooling down after an API error.`,
+      );
 
     if (pending.has(cacheKey)) return pending.get(cacheKey);
 
@@ -54,32 +64,26 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         if (!response.ok) {
-          // Diagnostics for the function logs; never includes the API key.
-          const detail = (await response.text().catch(() => '')).slice(0, 300);
+          const detail = brief(await response.text().catch(() => ''));
           console.warn(
             `[provider:${kind}] HTTP ${response.status} for ${path.split('?')[0]}: ${detail}`,
           );
-        }
-        if (!response.ok)
           throw new AppError(
             response.status === 429 ? 429 : 502,
             'provider',
-            `${name} request failed. Check plan access, API key and quota.`,
+            `${name} request failed (HTTP ${response.status}${detail ? ': ' + detail : ''}). Check plan access, API key and quota.`,
           );
+        }
         const body = await response.json();
         if ((body.errors && Object.keys(body.errors).length) || body.errorCode) {
-          const detail = JSON.stringify(body.errors ?? body.message ?? body.errorCode).slice(
-            0,
-            300,
-          );
+          const detail = brief(body.errors ?? body.message ?? body.errorCode);
           console.warn(`[provider:${kind}] rejected ${path.split('?')[0]}: ${detail}`);
-        }
-        if ((body.errors && Object.keys(body.errors).length) || body.errorCode)
           throw new AppError(
             502,
             'provider',
-            `${name} rejected this request. Your plan may not cover the selected season or league.`,
+            `${name} rejected this request: ${detail}. Your plan may not cover the selected season or league.`,
           );
+        }
         if (body.paging?.total > 1)
           throw new AppError(
             502,
@@ -93,9 +97,17 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
         const err =
           e instanceof AppError
             ? e
-            : new AppError(502, 'provider', `${name} is temporarily unavailable.`);
+            : new AppError(
+                502,
+                'provider',
+                `${name} is temporarily unavailable (${e?.name ?? 'error'}).`,
+              );
+        if (!(e instanceof AppError)) console.error(`[provider:${kind}] unexpected failure`, e);
         if (err.code === 'provider')
-          await store.setJSON('cooldown/' + kind, {until: now() + COOLDOWN_MS});
+          await store.setJSON('cooldown/' + kind, {
+            until: now() + COOLDOWN_MS,
+            reason: err.message,
+          });
         throw err;
       } finally {
         pending.delete(cacheKey);
