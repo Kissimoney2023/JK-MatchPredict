@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#091623" />
+    <meta
+      name="description"
+      content="Explore football matches, compare outcome probabilities and track virtual picks with JK MatchPredict."
+    />
+    <title>JK MatchPredict — Your matchday edge</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/"
+        ><span class="mark">JK</span
+        ><span>MatchPredict<small>FOOTBALL INTELLIGENCE</small></span></a
+      >
+      <nav aria-label="Main navigation">
+        <button data-view="matches" class="active">Match explorer</button
+        ><button data-view="picks">My picks <span id="pick-count">0</span></button
+        ><button data-view="method">How it works</button>
+      </nav>
+      <span class="virtual">VIRTUAL PICKS ONLY</span>
+    </header>
+    <main>
+      <section class="hero">
+        <div>
+          <div class="eyebrow">READ THE GAME. KNOW THE PROBABILITIES.</div>
+          <h1>Your next match.<br /><em>A clearer perspective.</em></h1>
+          <p>
+            Every league in reach. Every outcome considered.<br />Find your match, explore the
+            forecast, make your pick.
+          </p>
+        </div>
+        <div class="hero-stat">
+          <span class="orb">⚽</span>
+          <div class="eyebrow">THREE OUTCOMES. ONE PICTURE.</div>
+          <div class="sample">
+            <span>1 <b>Home</b></span
+            ><span>X <b>Draw</b></span
+            ><span>2 <b>Away</b></span>
+          </div>
+          <p>Probabilities, not promises.</p>
+        </div>
+      </section>
+      <div id="connection" class="connection" role="status">
+        Checking your football data connections…
+      </div>
+      <section id="explorer">
+        <div class="dashboard">
+          <aside>
+            <div class="rail-title">
+              <h2>Competitions</h2>
+              <span id="league-count">0</span>
+            </div>
+            <label class="sr" for="league-search">Search leagues or countries</label
+            ><input id="league-search" type="search" placeholder="Search league or country…" />
+            <div id="leagues" class="league-list"></div>
+            <div class="rail-note">
+              <b>Two sources. More coverage.</b>
+              <p>API-Football first.<br />football-data.org as fallback.</p>
+              <small>League and season access depend on your API plans.</small>
+            </div>
+          </aside>
+          <section class="match-panel">
+            <div class="panel-heading">
+              <div>
+                <div class="eyebrow" id="competition-country">MATCH EXPLORER</div>
+                <h2 id="competition-title">All available leagues</h2>
+              </div>
+              <button id="refresh" class="secondary">↻ Refresh</button>
+            </div>
+            <form id="filters">
+              <label>From · UTC<input id="date-from" type="date" required /></label
+              ><label>To · UTC<input id="date-to" type="date" required /></label
+              ><label class="team-search"
+                >Find a team<input id="team-search" type="search" placeholder="Team name" /></label
+              ><button type="submit" class="primary">Find matches</button>
+            </form>
+            <div class="filter-tabs" role="group" aria-label="Match status">
+              <button data-status="all" class="active">All matches</button
+              ><button data-status="upcoming">Upcoming</button
+              ><button data-status="live">In progress</button
+              ><button data-status="finished">Finished</button>
+            </div>
+            <div id="feedback" role="status"></div>
+            <div class="list-summary">
+              <span id="match-count">Choose a competition or date</span><span id="updated"></span>
+            </div>
+            <div id="matches" class="matches"></div>
+            <button id="more" class="secondary hidden">Load more matches</button>
+          </section>
+        </div>
+      </section>
+      <section id="picks-view" class="hidden">
+        <div class="panel-heading">
+          <div>
+            <div class="eyebrow">YOUR PREDICTION JOURNAL</div>
+            <h2>My virtual picks</h2>
+          </div>
+          <div class="actions">
+            <button id="settle" class="primary">Check results</button
+            ><button id="export" class="secondary">Export picks</button>
+          </div>
+        </div>
+        <p class="muted">
+          Picks lock when saved and live in a private server-side browser profile. Keep this
+          browser’s cookies to retain access. This is not a cross-device account.
+        </p>
+        <div id="pick-message" role="status"></div>
+        <div id="picks" class="matches"></div>
+      </section>
+      <section id="method-view" class="hidden prose">
+        <div class="eyebrow">BEHIND THE FORECAST</div>
+        <h2>A transparent way to read a match.</h2>
+        <h3>1. Choose your competition and dates</h3>
+        <p>
+          Browse every match returned for the selected date range, with search, status filters and
+          pagination. “All leagues” lists the matches your connected provider can return for one UTC
+          date. API plans may restrict competitions, seasons, forecasts and update speed.
+        </p>
+        <h3>2. Understand the source</h3>
+        <p>
+          API-Football supplies primary three-way forecasts. When those are unavailable,
+          football-data.org can supply match history for JK’s experimental goal model. Fallback is
+          possible only where the league and the same match can be verified. We never silently
+          substitute a different game.
+        </p>
+        <h3>3. Read the probabilities</h3>
+        <p>
+          Home, draw and away total 100%. The predicted outcome is the largest probability; a draw
+          can be the leading outcome. A favorite can still be more likely to draw or lose than win.
+          A close forecast may produce a recommendation to skip the match.
+        </p>
+        <h3>4. Treat tips as probability-based suggestions</h3>
+        <p>
+          Double chance combines two mutually exclusive match outcomes. Goals and
+          both-teams-to-score suggestions appear only when the goal model supplies estimates. No
+          bookmaker prices are connected, so we cannot claim profitable odds or value. All markets
+          refer to 90 minutes plus stoppage time.
+        </p>
+        <h3>Experimental model limitations</h3>
+        <p>
+          The fallback uses up to ten recent home matches and ten away matches, with at least five
+          each. It smooths scoring averages and estimates outcomes with independent Poisson goal
+          distributions. It has not been calibrated or backtested and does not adjust for injuries,
+          lineups, opponent strength or league strength. Insufficient data means no forecast.
+        </p>
+        <h3>Pick records</h3>
+        <p>
+          Each pick preserves its original forecast and cannot be changed or removed. Results are
+          checked on request, three eligible matches at a time. Delayed, postponed or incomplete
+          results stay pending. Extra-time and penalty outcomes are not substituted for
+          regulation-time scores. Netlify browser profiles are separate from the earlier
+          ChatGPT-hosted app’s accounts and picks.
+        </p>
+      </section>
+      <footer>
+        <span>JK MATCHPREDICT</span><span>Make informed picks. Expect uncertainty.</span
+        ><span>Netlify edition · 1.0</span>
+      </footer>
+    </main>
+    <dialog id="analysis">
+      <button id="close-analysis" class="close" aria-label="Close match analysis">×</button>
+      <div id="analysis-body"></div>
+    </dialog>
+    <script type="module" src="/js/main.js"></script>
+  </body>
+</html>
