@@ -10,19 +10,22 @@ function withoutTrailingSlashes(url) {
 
 /**
  * Minimal Supabase client over fetch (no SDK): PostgREST tables and the Auth PKCE endpoints.
- * Uses the service-role key, so it must only ever run on the server.
+ * `key` is the server-only secret key (sb_secret_..., or the legacy service_role JWT): it
+ * bypasses Row Level Security and must never reach a browser. `authKey` (the publishable key)
+ * is used for the Auth code exchange, which needs no elevated rights; it defaults to `key`.
+ *
+ * Supabase's new keys are not JWTs: they go on the `apikey` header only. Only a legacy JWT
+ * key is also sent as a Bearer token.
  */
-export function createSupabase({url, key, fetcher}) {
+export function createSupabase({url, key, authKey, fetcher}) {
   const base = withoutTrailingSlashes(url);
 
   /** `authCall` marks Auth requests, where a 4xx means "this sign-in cannot be completed". */
   async function call(path, {method = 'GET', query, body, prefer, authCall = false} = {}) {
     const target = base + path + (query ? '?' + new URLSearchParams(query) : '');
-    const headers = {
-      apikey: key,
-      Authorization: 'Bearer ' + key,
-      'Content-Type': 'application/json',
-    };
+    const apiKey = authCall ? (authKey ?? key) : key;
+    const headers = {apikey: apiKey, 'Content-Type': 'application/json'};
+    if (apiKey.startsWith('eyJ')) headers.Authorization = 'Bearer ' + apiKey; // legacy JWT keys
     if (prefer) headers.Prefer = prefer;
     let response;
     try {

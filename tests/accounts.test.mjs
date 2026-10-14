@@ -7,7 +7,12 @@ import {createMemoryStore} from '../server/store/memory.mjs';
 import {createStorage} from '../server/service/storage.mjs';
 import {createPickStore, MAX_PICKS} from '../server/service/pickstore.mjs';
 import {createSupabase} from '../server/supabase.mjs';
-import {createFakeSupabase, SERVICE_KEY, SUPABASE_URL} from './helpers/fake-supabase.mjs';
+import {
+  createFakeSupabase,
+  PUBLISHABLE_KEY,
+  SERVICE_KEY,
+  SUPABASE_URL,
+} from './helpers/fake-supabase.mjs';
 
 const base = Date.parse('2026-10-14T10:00:00Z');
 const ORIGIN = 'https://app.example';
@@ -24,7 +29,14 @@ function setup({configured = true, env = {}} = {}) {
   const db = createFakeSupabase();
   const store = createMemoryStore();
   const service = createService({
-    env: configured ? {SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY, ...env} : env,
+    env: configured
+      ? {
+          SUPABASE_URL,
+          SUPABASE_SECRET_KEY: SERVICE_KEY,
+          SUPABASE_PUBLISHABLE_KEY: PUBLISHABLE_KEY,
+          ...env,
+        }
+      : env,
     store,
     fetcher: db.fetcher,
     now: () => clock,
@@ -369,4 +381,45 @@ test('HTTP: sign-in routes refuse politely when Supabase is not configured', asy
   );
   assert.equal(r.status, 503);
   assert.equal((await r.json()).code, 'accounts_disabled');
+});
+
+test('keys are sent the way Supabase requires: apikey only, publishable key for the sign-in exchange', async () => {
+  const x = setup();
+  await signIn(x);
+  const rest = x.db.requests.filter((r) => r.path.startsWith('/rest/v1/'));
+  const auth = x.db.requests.filter((r) => r.path === '/auth/v1/token');
+  assert.ok(rest.length > 0 && auth.length === 1);
+  for (const r of x.db.requests)
+    assert.equal(r.headers.Authorization, undefined, 'no Bearer for sb_ keys');
+  assert.ok(rest.every((r) => r.headers.apikey === SERVICE_KEY));
+  assert.equal(auth[0].headers.apikey, PUBLISHABLE_KEY, 'the exchange needs no elevated key');
+});
+
+test('environment variable names from the Supabase quickstart and legacy names both work', async () => {
+  const quickstart = setup({
+    configured: false,
+    env: {
+      NEXT_PUBLIC_SUPABASE_URL: SUPABASE_URL,
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: PUBLISHABLE_KEY,
+      SUPABASE_SECRET_KEY: SERVICE_KEY,
+    },
+  });
+  assert.equal(quickstart.service.accounts.info().enabled, true);
+  assert.ok(await signIn(quickstart));
+
+  const legacy = setup({
+    configured: false,
+    env: {SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY},
+  });
+  assert.ok(
+    await signIn(legacy),
+    'without a publishable key the secret key is used for the exchange',
+  );
+
+  // A publishable key alone must never enable accounts (it cannot reach the tables).
+  const publicOnly = setup({
+    configured: false,
+    env: {SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY: PUBLISHABLE_KEY},
+  });
+  assert.equal(publicOnly.service.accounts.info().enabled, false);
 });

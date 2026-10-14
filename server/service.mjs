@@ -51,9 +51,18 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
     strikerApi,
   });
   // Accounts and their picks live in Supabase (optional); everything else uses the store.
+  const supabaseUrl = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseSecret = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabasePublishable =
+    env.SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const supabase =
-    env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY
-      ? createSupabase({url: env.SUPABASE_URL, key: env.SUPABASE_SERVICE_ROLE_KEY, fetcher})
+    supabaseUrl && supabaseSecret
+      ? createSupabase({
+          url: supabaseUrl,
+          key: supabaseSecret,
+          authKey: supabasePublishable,
+          fetcher,
+        })
       : null;
   const pickStore = createPickStore({storage, supabase});
   const {picks, save, settlePicks, mergePicks} = createPicks({now, storage, lookup, pickStore});

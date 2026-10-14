@@ -37,7 +37,7 @@ API_FOOTBALL_DAILY_LIMIT=100
 
 - `API_FOOTBALL_KEY`: direct API-Football/API-Sports key. A RapidAPI credential is not interchangeable.
 - `FOOTBALL_DATA_ORG_KEY`: football-data.org API token.
-- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, optional `SITE_URL`: accounts (see Accounts).
+- `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_PUBLISHABLE_KEY`, optional `SITE_URL`: accounts (see Accounts).
 - `STRIKERAPI_API_KEY`: optional StrikerAPI key (see StrikerAPI above). `STRIKERAPI_MONTHLY_CREDITS`: credit cap, default 450. `STRIKERAPI_MARKET_FORECASTS`: `off` disables market-based forecasts.
 - `CRON_SECRET`: secret for `/api/prefetch` (see Scheduled prefetch). `PREFETCH_COMPETITIONS`: optional competition codes to warm, default `CL`.
 - `API_FOOTBALL_DAILY_LIMIT`: optional daily application budget; default 100. Change it only to match your allowance. Other apps using the same key can consume the provider's quota independently.
@@ -79,10 +79,13 @@ Without an account, picks live in a private server-side profile tied to the brow
 2. **GitHub OAuth app.** GitHub → Settings → Developer settings → OAuth Apps → New. Homepage URL: your app URL. Authorization callback URL: `https://<your-project-ref>.supabase.co/auth/v1/callback` (shown on Supabase's GitHub provider page). Copy the Client ID and generate a Client Secret.
 3. **Enable the provider.** Supabase → Authentication → Providers → GitHub: enable, paste the Client ID and Secret.
 4. **Allow your site.** Supabase → Authentication → URL Configuration: set **Site URL** to your app URL (for example `https://jk-matchpredict.vercel.app`) and add it, with `/**` at the end, to **Redirect URLs**. Add `http://localhost:3000/**` too if you test locally. Without this, sign-in returns to the wrong place.
-5. **Vercel environment variables** (Settings → Environment Variables), then redeploy:
-   - `SUPABASE_URL`: Project Settings → API → Project URL.
-   - `SUPABASE_SERVICE_ROLE_KEY`: Project Settings → API → `service_role` secret. This key bypasses all security rules: keep it server-side only, never prefix it with `NEXT_PUBLIC_`, and never commit it.
+5. **Vercel environment variables** (Settings → Environment Variables), then redeploy. Supabase calls them API keys (Project Settings → API Keys):
+   - `SUPABASE_URL`: the Project URL.
+   - `SUPABASE_SECRET_KEY`: the **secret** key (`sb_secret_...`). The legacy name `SUPABASE_SERVICE_ROLE_KEY` (the old `service_role` key) also works. This key bypasses all security rules: keep it server-side only, never prefix it with `NEXT_PUBLIC_`, never commit it, never paste it in a chat.
+   - `SUPABASE_PUBLISHABLE_KEY`: the **publishable** key (`sb_publishable_...`), which is safe to expose. It is used only for the sign-in code exchange, so the app needs no elevated rights there. If omitted, the secret key is used for that step too.
    - `SITE_URL` (optional): fixes the address people return to after signing in; defaults to the address of the request.
+
+   The names `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from Supabase's Next.js quickstart are also accepted. This app is **not** a Next.js app and uses no Supabase SDK or `@supabase/ssr`: the server talks to Supabase's REST and Auth APIs directly, and the browser never receives a Supabase key. Supabase's new keys are not JWTs, so the client sends them on the `apikey` header only.
 
 ### How it works
 

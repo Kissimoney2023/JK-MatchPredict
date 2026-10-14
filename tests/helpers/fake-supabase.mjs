@@ -1,7 +1,8 @@
 import {createHash, randomBytes} from 'node:crypto';
 
 export const SUPABASE_URL = 'https://proj.supabase.co';
-export const SERVICE_KEY = 'service-role-secret';
+export const SERVICE_KEY = 'sb_secret_testsecret';
+export const PUBLISHABLE_KEY = 'sb_publishable_testpublic';
 
 const PRIMARY_KEYS = {
   profiles: ['id'],
@@ -50,7 +51,12 @@ export function createFakeSupabase() {
     const method = opts.method ?? 'GET';
     requests.push({method, path: url.pathname, query: url.search, headers: opts.headers});
     if (failing) return Response.json({message: 'down'}, {status: 503});
-    if (opts.headers?.apikey !== SERVICE_KEY)
+    const apikey = opts.headers?.apikey;
+    // Like the real gateway: the new keys are not JWTs, so they must not be sent as Bearer tokens.
+    if (apikey?.startsWith('sb_') && opts.headers?.Authorization)
+      return Response.json({message: 'Expected 3 parts in JWT; got 1'}, {status: 401});
+    const isAuth = url.pathname.startsWith('/auth/v1/');
+    if (isAuth ? ![SERVICE_KEY, PUBLISHABLE_KEY].includes(apikey) : apikey !== SERVICE_KEY)
       return Response.json({message: 'bad key'}, {status: 401});
 
     if (url.pathname === '/auth/v1/token') {
