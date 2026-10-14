@@ -42,7 +42,7 @@ function emptyState() {
       : 'Your matchday starts here';
   const hint = ready
     ? 'Try a different date, competition or status filter.'
-    : 'Add your API keys in Netlify, or preview the sample matches above.';
+    : 'Add your API keys in Vercel, or preview the sample matches above.';
   return `<div class="empty"><strong>${title}</strong>${hint}</div>`;
 }
 

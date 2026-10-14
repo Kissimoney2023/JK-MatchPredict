@@ -10,6 +10,7 @@ export const state = {
   busy: false,
   connected: false,
   providers: [],
+  storage: '',
   source: '',
   at: null,
   listing: null,

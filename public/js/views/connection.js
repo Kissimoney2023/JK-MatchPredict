@@ -17,6 +17,10 @@ export function renderConnection(error = '') {
   const title = state.connected ? 'Football data connected' : 'Connect your football data';
   const hint = state.connected
     ? 'Coverage depends on your API plans. Select a match for a forecast.'
-    : 'In Netlify, add API_FOOTBALL_KEY and FOOTBALL_DATA_ORG_KEY as runtime environment variables, then redeploy.';
-  div.innerHTML = `<strong>${title}</strong> ${providers}<br>${hint} ${error ? '<br>' + esc(error) : ''} <button class="text-button" data-demo>Preview sample matches →</button>`;
+    : 'In Vercel, add API_FOOTBALL_KEY and FOOTBALL_DATA_ORG_KEY as environment variables, then redeploy.';
+  const storage =
+    state.connected && state.storage === 'memory'
+      ? '<br>Temporary storage: picks may reset. Add Upstash Redis in Vercel Storage.'
+      : '';
+  div.innerHTML = `<strong>${title}</strong> ${providers}<br>${hint}${storage} ${error ? '<br>' + esc(error) : ''} <button class="text-button" data-demo>Preview sample matches →</button>`;
 }

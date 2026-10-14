@@ -41,6 +41,18 @@ async function loadMatches() {
   renderMatches();
 }
 
+const UPCOMING_WINDOW_DAYS = 30;
+
+/** Default view: the Champions League over the next 30 days, upcoming matches only. */
+function showUpcomingChampionsLeague() {
+  const champions = state.leagues.find((l) => l.fdCode === 'CL');
+  if (!champions) return;
+  state.league = champions.key;
+  state.status = 'upcoming';
+  $('#date-from').value = todayUtc();
+  $('#date-to').value = todayUtc(UPCOMING_WINDOW_DAYS);
+}
+
 async function initialize() {
   state.demo = false;
   state.leagues = [];
@@ -50,11 +62,13 @@ async function initialize() {
     const status = await api('status');
     state.providers = status.providers;
     state.connected = status.connected;
+    state.storage = status.storage;
     renderConnection();
     if (status.connected) {
       const catalog = await api('leagues');
       state.leagues = catalog.leagues;
       message(catalog.warnings.join(' '));
+      showUpcomingChampionsLeague();
     }
     renderLeagues();
     await loadMatches();
@@ -81,7 +95,7 @@ function switchView(view) {
 function startDemo() {
   state.demo = true;
   state.leagues = demoLeagues;
-  state.league = 'all';
+  showUpcomingChampionsLeague();
   renderConnection();
   renderLeagues();
   switchView('matches');

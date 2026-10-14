@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createService, dates} from '../server/service.mjs';
 import {analyze} from '../server/analysis.mjs';
-import {makeHandler} from '../netlify/functions/football.mjs';
+import {makeHandler} from '../server/handler.mjs';
 import {goalModel, fdSettlementRaw, settle} from '../server/model.mjs';
 class Store {
   data = new Map();

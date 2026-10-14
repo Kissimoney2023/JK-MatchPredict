@@ -1,4 +1,5 @@
 node_modules
 dist
-.netlify
+.vercel
+.vercel-verification
 package-lock.json

@@ -15,7 +15,8 @@ export const formatDate = (value) =>
     minute: '2-digit',
   });
 
-export const todayUtc = () => new Date().toISOString().slice(0, 10);
+export const todayUtc = (offsetDays = 0) =>
+  new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
 
 export function message(text, target = '#feedback') {
   $(target).innerHTML = text ? `<div class="message">${esc(text)}</div>` : '';

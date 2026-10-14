@@ -904,6 +904,65 @@ progress::-moz-progress-bar {
   }
 }
 
+/* ---------- Small tablet: competitions become a scrolling chip row ---------- */
+@media (max-width: 900px) {
+  .dashboard {
+    display: block;
+  }
+  aside {
+    position: static;
+    padding: 0;
+    border: 0;
+  }
+  .league-list {
+    display: flex;
+    gap: var(--space-2);
+    max-height: none;
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-2);
+  }
+  .league {
+    flex: none;
+    width: 190px;
+    border-color: var(--border);
+  }
+  .rail-note {
+    display: none;
+  }
+  #league-search {
+    margin-bottom: var(--space-1);
+  }
+  header {
+    position: static;
+  }
+  .header-inner {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  nav {
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+  }
+  nav button {
+    flex: 1;
+    justify-content: center;
+    padding: 0 var(--space-2);
+    white-space: nowrap;
+  }
+  .hero {
+    padding: var(--space-5) 0 var(--space-4);
+  }
+  .hero-stat {
+    display: none;
+  }
+  .connection {
+    margin-bottom: var(--space-4);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+}
+
 /* ---------- Mobile ---------- */
 @media (max-width: 700px) {
   header {
@@ -936,37 +995,25 @@ progress::-moz-progress-bar {
   .hero {
     padding: var(--space-5) 0 var(--space-4);
   }
+  .hero {
+    padding: var(--space-4) 0 var(--space-3);
+  }
   .hero p {
-    font-size: 15px;
+    display: none;
+  }
+  h1 {
+    margin: var(--space-2) 0 0;
+    font-size: 28px;
+  }
+  .league small {
+    display: none;
+  }
+  .league {
+    width: 150px;
+    min-height: 48px;
   }
   .hero-stat {
     display: none;
-  }
-  .dashboard {
-    display: block;
-  }
-  aside {
-    position: static;
-    padding: 0;
-    border: 0;
-  }
-  .league-list {
-    display: flex;
-    gap: var(--space-2);
-    max-height: none;
-    margin-bottom: var(--space-5);
-    padding-bottom: var(--space-2);
-  }
-  .league {
-    flex: none;
-    width: 190px;
-    border-color: var(--border);
-  }
-  .rail-note {
-    display: none;
-  }
-  #league-search {
-    margin-bottom: var(--space-1);
   }
   .panel-heading h2 {
     font-size: 24px;

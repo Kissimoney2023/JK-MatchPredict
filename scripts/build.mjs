@@ -17,14 +17,14 @@ await mkdir('dist/fonts', {recursive: true});
 for (const [pkg, file] of FONTS)
   await cp(`node_modules/@fontsource/${pkg}/files/${file}`, `dist/fonts/${file}`);
 
-// 2. Verify the Netlify function bundles (Netlify bundles it again at deploy time).
+// 2. Verify the Vercel function bundles (Vercel bundles it again at deploy time).
 await build({
-  entryPoints: ['netlify/functions/football.mjs'],
+  entryPoints: ['api/football.mjs'],
   bundle: true,
   platform: 'node',
   format: 'esm',
   target: 'node22',
-  outfile: '.netlify/verification/football.mjs',
+  outfile: '.vercel-verification/football.mjs',
   packages: 'external',
 });
 
@@ -34,4 +34,4 @@ for (const file of ['style.css', 'analysis.js', 'js/main.js']) await access('dis
 if (!html.includes('id="analysis"')) throw Error('Analysis view missing');
 if (!html.includes('/js/main.js')) throw Error('Frontend entry point missing from index.html');
 
-console.log('Static application and Netlify function bundle verified.');
+console.log('Static application and Vercel function bundle verified.');

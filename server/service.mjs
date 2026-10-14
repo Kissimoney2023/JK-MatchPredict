@@ -21,6 +21,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
 
   const status = () => ({
     connected: !!(env.API_FOOTBALL_KEY || env.FOOTBALL_DATA_ORG_KEY),
+    storage: store.kind ?? 'unknown',
     providers: [
       {name: 'API-Football', configured: !!env.API_FOOTBALL_KEY, role: 'Primary'},
       {name: 'football-data.org', configured: !!env.FOOTBALL_DATA_ORG_KEY, role: 'Fallback'},

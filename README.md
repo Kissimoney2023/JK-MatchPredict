@@ -1,4 +1,4 @@
-# JK MatchPredict — Netlify edition
+# JK MatchPredict — Vercel edition
 
 A deployable football match explorer, probability dashboard, prediction/tips view and virtual-pick journal. This edition is independent of the earlier ChatGPT Sites deployment.
 
@@ -15,21 +15,15 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - Result checking and JSON export. No deposits, wagers, wallets or payments.
 - Explicit demo mode with invented examples, available even before keys are configured.
 
-## Deploy to Netlify
+## Deploy to Vercel
 
-1. Unzip this source bundle and put its contents at the root of a Git repository. Do not upload `node_modules`, `.netlify`, or a filled `.env` file.
-2. In Netlify, import that Git repository as a new project. The included `netlify.toml` sets:
-   - Build command: `npm run build`
-   - Publish directory: `dist`
-   - Functions directory: `netlify/functions`
-   - Node version: `22`
-3. Add the environment variables below in the Netlify project's environment settings. They must be available to Functions at runtime. Do not prefix them with `VITE_`, `NEXT_PUBLIC_` or expose them to browser code.
-4. Deploy or redeploy after saving the variables. Netlify Blobs provides the cache, quota counters, forecast snapshots and browser-profile picks; no separate database password is required.
-5. Open the deployed URL, confirm the key-configured statuses, select a league/date and request one forecast. Then save a virtual pick and verify it appears in My picks.
+1. Push this repository to GitHub and import it in Vercel (Add New → Project). `vercel.json` sets the build command (`npm run build`) and output directory (`dist`); the `api/` folder is deployed automatically as a Vercel Function at `/api/football`. Use Node 22 (Project Settings → General → Node.js Version).
+2. In Vercel → Storage, add **Upstash Redis** (Marketplace) and connect it to the project. It injects `KV_REST_API_URL` and `KV_REST_API_TOKEN`, which the app uses for the cache, quota counters, forecast snapshots and picks. Without it the app falls back to temporary in-memory storage (picks and quotas can reset between requests) and the page says so.
+3. Add the environment variables below under Settings → Environment Variables (Production, and Preview if wanted). Do not prefix them with `NEXT_PUBLIC_` or expose them to browser code.
+4. Redeploy after saving the variables.
+5. Open the deployed URL. The page opens on the Champions League with upcoming matches for the next 30 days (when a connected provider covers it). Request one forecast, save a pick and verify it appears in My picks.
 
-Do not deploy only the `dist` directory using static drag-and-drop: that would omit the server functions and live data service. Use a Git-connected Netlify build or the Netlify CLI with the full project.
-
-This bundle has not been deployed to a Netlify account by the assistant. Real API credentials were not supplied, so real-provider and production Netlify verification are still required. The existing ChatGPT Sites URL continues to host its earlier edition.
+The static site is built into `dist` (`npm run build`). Deploy the whole Git project, not just `dist`, otherwise the API function is omitted.
 
 ## Environment variables
 
@@ -52,18 +46,16 @@ Provider signup:
 - https://dashboard.api-football.com/
 - https://www.football-data.org/client/register
 
-A local `.env` is not automatically a production Netlify secret. Add/import the values through Netlify's environment settings and redeploy. Do not commit keys or put them in `netlify.toml`.
+Local `.env` files are not production secrets. Add the values in Vercel project settings and redeploy. Do not commit keys.
 
 ## Local development
 
 ```sh
 npm ci
-cp .env.example .env
-# Fill in the local .env values without committing the file.
-npx netlify-cli dev
+npx vercel dev   # serves dist/ and the /api function; needs the Vercel CLI and a linked project
 ```
 
-The Netlify CLI supplies the Functions and Blobs development environment. A plain static server can preview the UI/demo, but cannot supply live APIs or saved picks.
+`vercel dev` pulls environment variables from the linked project. A plain static server can preview the UI/demo, but cannot supply live APIs or saved picks.
 
 Checks:
 
@@ -72,7 +64,7 @@ npm test
 npm run build
 ```
 
-The build copies public assets into `dist` and verifies the Node function bundle with esbuild. Netlify subsequently packages/deploys the configured function directory. Automated tests use mocked football responses and a conditional-write storage adapter; they do not prove paid/free plan coverage or real API accuracy. Visual browser QA was not available in the authoring environment.
+The build copies public assets and fonts into `dist` and verifies that the function bundles with esbuild. Automated tests use mocked football responses and a conditional-write storage adapter; they do not prove paid/free plan coverage or real API accuracy.
 
 ## Predictions and tips
 
@@ -94,7 +86,7 @@ All-league browsing uses one UTC day. Single-league queries support up to 31 day
 
 ## Pick storage and privacy
 
-- Netlify Blobs stores cache, forecast and pick records server-side.
+- Upstash Redis (via Vercel Storage) stores cache, forecast and pick records server-side.
 - A 256-bit random HttpOnly, SameSite=Lax, Secure-on-HTTPS cookie identifies a private browser profile. No extra auth API key is needed.
 - This is not an account/login system: picks do not follow you across devices. Clearing cookies or switching domains loses access to the old profile. Export your picks before doing so. JSON export is for your records; it is not an import or authentication token.
 - Picks are immutable and limited to 500 per profile. Atomic conditional writes prevent concurrent updates from overwriting each other. Duplicate canonical match picks are blocked.
@@ -105,23 +97,23 @@ All-league browsing uses one UTC day. Single-league queries support up to 31 day
 
 Server-side keys never enter the frontend. The function enforces same-origin POST requests, input validation, per-IP request budgeting, provider caching, per-minute provider budgets (9 calls/minute each), a configurable primary daily budget and a one-minute provider-error cooldown. These measures reduce usage; they do not make hosting or API usage unlimited/free. Check Netlify and provider billing/usage limits before sharing publicly.
 
-Cache and quota updates use strongly consistent Netlify Blobs and conditional writes. Forecast snapshots are immutable. Cache objects are reused but historic snapshot data is retained; plan a retention policy if operating at scale.
+Cache and quota updates use Redis with atomic compare-and-set writes. Cache, quota, listing and forecast keys expire automatically; picks are kept. Forecast snapshots are immutable. Cache objects are reused but historic snapshot data is retained; plan a retention policy if operating at scale.
 
 ## Architecture
 
 - `public/`: static UI (no API keys). `js/main.js` wires events and data loading; `js/views/` render matches, leagues, analysis, picks and connection status; `js/api.js`, `js/state.js`, `js/dom.js`, `js/busy.js` and `js/demo.js` hold shared helpers.
 - `server/service.mjs`: composes the football service from `server/service/`:
-  - `storage.mjs` (Blobs reads, atomic updates, budgets), `provider.mjs` (cached, rate-limited provider client), `normalize.mjs` (fixture shapes and league mapping),
+  - `storage.mjs` (store reads, atomic updates, budgets), `provider.mjs` (cached, rate-limited provider client), `normalize.mjs` (fixture shapes and league mapping),
   - `catalog.mjs`, `fixtures.mjs`, `lookup.mjs` (single-match and cross-provider verification), `forecast.mjs` and `picks.mjs`.
 - `server/model.mjs`: normalization and experimental goal model.
 - `server/analysis.mjs`: outcome summaries and probability-based tips. Shared with the browser; `npm run build` publishes it as `/analysis.js`.
 - `server/errors.mjs`, `server/util.mjs`: `AppError`, hashing, date and time helpers.
-- `netlify/functions/football.mjs`: Netlify HTTP entry point and browser-profile session handling.
-- `netlify.toml`: deployment and security headers.
+- `api/football.mjs`: Vercel Function entry point; `server/handler.mjs` holds the HTTP handler and browser-profile session handling; `server/store/` has the Redis and in-memory stores.
+- `vercel.json`: build settings and security headers.
 - `tests/`: mocked provider, domain, storage and HTTP checks.
 
-Netlify documentation:
+Vercel documentation:
 
-- https://docs.netlify.com/build/functions/environment-variables/
-- https://docs.netlify.com/build/data-and-storage/netlify-blobs/
-- https://docs.netlify.com/build/functions/configuration/
+- https://vercel.com/docs/functions
+- https://vercel.com/docs/environment-variables
+- https://vercel.com/marketplace/upstash
