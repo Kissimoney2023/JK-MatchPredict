@@ -145,9 +145,9 @@ test('API outage falls back, retains a stable source and model labels', async ()
   assert.equal(l.source, 'football-data.org');
   assert.equal(l.fixtures[0].key, 'fd:200');
   const f = await x.service.forecast('fd:200', l.listingId);
-  assert.equal(f.modelVersion, 'jk-poisson-v1');
+  assert.equal(f.modelVersion, 'jk-ratings-v2');
   assert.equal(f.analysis.tips.length, 4);
-  assert(f.explanation.includes('Not calibrated'));
+  assert(f.explanation.includes('Not yet validated'));
   assert.equal(
     f.p.reduce((a, b) => a + b),
     100,

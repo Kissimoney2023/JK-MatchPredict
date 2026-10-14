@@ -82,9 +82,18 @@ Free provider plans allow only a handful of requests per minute, and one forecas
 
 API-Football provides primary three-way probabilities. It is credited as the forecast source. The highest probability is labeled the predicted outcome, not a guaranteed result; a draw can be the favorite.
 
-The experimental `jk-poisson-v1` fallback uses up to ten recent home matches for the home team and ten away matches for the away team, with at least five per side. It takes completed regulation-time results before the forecast cutoff, averages offense and opposing defense with two 1.3-goal pseudo-observations, caps goal means to 0.15–5 and sums independent Poisson goal probabilities. Double chance follows from summed match probabilities; total goals and both-teams-to-score follow from the goal means.
+The experimental `jk-ratings-v2` fallback (used when API-Football has no forecast) fits a regularised Poisson attack/defence model with home advantage to completed regulation-time results from football-data.org: the two teams' histories plus every other team history already cached for the same fixture list (cache reads only, so no extra provider requests). Matches are weighted by recency (half-life 180 days) and ratings are shrunk toward the average team (ridge 4). Each team needs at least 8 results; otherwise the simpler `jk-poisson-v1` goal-average model is used (five home/away matches per side), and if that also lacks data no forecast is shown. Double chance follows from summed match probabilities; total goals and both-teams-to-score follow from the expected goals.
 
-This model is uncalibrated and unbacktested. It ignores injuries, lineups, opponent and league strength. Do not advertise its probabilities as demonstrated accuracy. If history is insufficient, the app reports that no forecast is available.
+### Backtesting
+
+`server/evaluation.mjs` replays the model chronologically (each match is predicted only from results before its refit window) and reports accuracy, log loss, Brier score and calibration against two baselines: the home/draw/away frequency prior and the legacy model. Tests verify the maths on synthetic leagues with known team strengths, where the ratings model beats both baselines. That says the code works, **not** how accurate it is on real football. To measure that, run:
+
+```sh
+FOOTBALL_DATA_ORG_KEY=... node scripts/backtest.mjs --competition CL --days 90
+node scripts/backtest.mjs --tune   # compare half-life / shrinkage settings on the cached data
+```
+
+The first run downloads each team's last-year results (about 6.5 s per team on the free tier) into `.cache/`. Do not advertise accuracy figures until you have run this on real data.
 
 No bookmaker prices are connected. Tips therefore do not establish positive expected value, profit or guaranteed winnings. Result and tip markets refer to 90 minutes plus stoppage time.
 

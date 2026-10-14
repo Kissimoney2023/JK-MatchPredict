@@ -165,10 +165,14 @@
         </p>
         <h3>Experimental model limitations</h3>
         <p>
-          The fallback uses up to ten recent home matches and ten away matches, with at least five
-          each. It smooths scoring averages and estimates outcomes with independent Poisson goal
-          distributions. It has not been calibrated or backtested and does not adjust for injuries,
-          lineups, opponent strength or league strength. Insufficient data means no forecast.
+          The fallback rates every team on attack and defence using recent regulation-time results
+          from football-data.org, including each team’s other competitions. Newer matches count
+          more, ratings are shrunk toward the average, and the opponent’s strength is taken into
+          account. Home, draw and away chances come from independent Poisson goal distributions. It
+          is still experimental: it has not been validated on real results, ignores injuries,
+          lineups and rotation, and can compare teams from different leagues only roughly. When a
+          team has too little history, an older, simpler goal-average model is used, and when even
+          that is not possible there is no forecast.
         </p>
         <h3>Pick records</h3>
         <p>

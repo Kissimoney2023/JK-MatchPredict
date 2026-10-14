@@ -149,6 +149,11 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
     }
   }
 
+  /** Cached copy of a request (any age up to `maxAgeMs`), never calling the provider. */
+  provider.peek = async (kind, path, maxAgeMs) => {
+    const cached = await read('cache/' + hash(kind + ':' + path));
+    return cached && now() - cached.at < maxAgeMs ? cached : null;
+  };
   provider.stats = stats;
   return provider;
 }

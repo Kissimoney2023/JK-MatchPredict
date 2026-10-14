@@ -1,6 +1,7 @@
 import {AppError} from '../errors.mjs';
 import {hash, HOUR} from '../util.mjs';
 import {probabilities, isOpen, sameMatch, goalModel} from '../model.mjs';
+import {ratingsForecast} from '../ratings.mjs';
 import {analyze} from '../analysis.mjs';
 
 export function createForecast({env, store, now, storage, provider, lookup, history}) {
@@ -8,20 +9,35 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
   const {mappedFD, fresh} = lookup;
 
   /** Fallback forecast from football-data.org history via the Poisson goal model. */
-  async function model(f) {
+  async function model(f, competitionTeamIds = []) {
     const {f: target} = await mappedFD(f);
     if (!isOpen(target, now()) || !sameMatch(target, f))
       throw new AppError(409, 'closed', 'Match is no longer open at the same kickoff time.');
     const h = await history(target.homeTeamId);
     const a = await history(target.awayTeamId);
-    const m = goalModel(
-      h.body.matches ?? [],
-      a.body.matches ?? [],
-      target.homeTeamId,
-      target.awayTeamId,
-      f.kickoff,
-      now(),
-    );
+    // Opponent-aware ratings use every cached history from the same fixture list (free reads);
+    // only the two target teams' histories may cost a live request.
+    const rows = [...(h.body.matches ?? []), ...(a.body.matches ?? [])];
+    for (const id of competitionTeamIds) {
+      if (id === target.homeTeamId || id === target.awayTeamId) continue;
+      rows.push(...((await history.peek(id))?.body.matches ?? []));
+    }
+    const m =
+      ratingsForecast({
+        rows,
+        homeId: target.homeTeamId,
+        awayId: target.awayTeamId,
+        kickoff: f.kickoff,
+        now: now(),
+      }) ??
+      goalModel(
+        h.body.matches ?? [],
+        a.body.matches ?? [],
+        target.homeTeamId,
+        target.awayTeamId,
+        f.kickoff,
+        now(),
+      );
     if (!m)
       throw new AppError(
         404,
@@ -44,6 +60,13 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
     const known = listing?.items?.find((f) => f.key === key);
     if (!known) throw new AppError(404, 'fixture', 'Load this match from the match browser first.');
 
+    const teamIds = [
+      ...new Set(
+        (listing.items ?? [])
+          .flatMap((x) => [x.homeTeamId, x.awayTeamId])
+          .filter((id) => Number.isInteger(id)),
+      ),
+    ];
     const {f: current} = await fresh(known);
     const f = {
       ...current,
@@ -74,9 +97,9 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
         record = {...f, p, source: 'API-Football', fallback: false, providerFetchedAt: d.at};
       } catch (e) {
         if (!env.FOOTBALL_DATA_ORG_KEY) throw e;
-        record = await model(f);
+        record = await model(f, teamIds);
       }
-    } else record = await model(f);
+    } else record = await model(f, teamIds);
 
     const forecastAt = now();
     const forecastId = hash(

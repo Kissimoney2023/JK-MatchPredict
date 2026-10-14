@@ -177,3 +177,17 @@ test('prefetch endpoint requires the cron secret', async () => {
   assert.equal(ok.status, 200);
   assert.deepEqual(await ok.json(), {ok: true});
 });
+
+test('a warmed cache lets the forecast rate teams using the whole fixture list', async () => {
+  const {service, advance} = setup();
+  await service.prefetch({maxFetches: 6});
+  advance(61_000);
+  await service.prefetch({maxFetches: 6});
+  advance(61_000);
+
+  const list = await service.fixtures(upcoming());
+  const forecast = await service.forecast('fd:100', list.listingId);
+  assert.equal(forecast.modelVersion, 'jk-ratings-v2');
+  // Eight fixture teams plus the shared opponent (id 99) are rated together.
+  assert.equal(forecast.teamsRated, 9);
+});
