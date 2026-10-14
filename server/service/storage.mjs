@@ -21,13 +21,14 @@ export function createStorage({store, now}) {
     throw new AppError(409, 'busy', 'Another request is updating this record. Please retry.');
   }
 
-  async function budget(key, limit, windowMs) {
+  /** Spends `cost` units from a fixed-window budget, or throws when it would exceed `limit`. */
+  async function budget(key, limit, windowMs, cost = 1) {
     const window = Math.floor(now() / windowMs);
     await atomic('budget/' + hash(key), (old) => {
       const count = old?.window === window ? old.count : 0;
-      if (count >= limit)
+      if (count + cost > limit)
         throw new AppError(429, 'quota', 'Request budget reached. Please try later.');
-      return {window, count: count + 1};
+      return {window, count: count + cost};
     });
   }
 

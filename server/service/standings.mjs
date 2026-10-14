@@ -17,15 +17,12 @@ const row = (r) => ({
   points: r.points,
 });
 
-/** Overall (TOTAL) standings tables from football-data.org, cached for 12 hours. */
-export function createStandings({env, provider, league}) {
-  async function standings(leagueKey) {
-    if (!env.FOOTBALL_DATA_ORG_KEY)
-      throw new AppError(503, 'not_configured', 'football-data.org key is not configured.');
-    const selected = await league(leagueKey);
-    if (!selected?.fdCode)
-      throw new AppError(404, 'standings', 'Standings are not available for this competition.');
-
+/**
+ * Overall league tables, cached for 12 hours: football-data.org first, StrikerAPI as the
+ * fallback when that provider is unconfigured, rate-limited or down.
+ */
+export function createStandings({env, provider, league, strikerApi}) {
+  async function fromFootballData(selected) {
     const r = await provider('fd', `competitions/${selected.fdCode}/standings`, STANDINGS_TTL);
     const groups = (r.body.standings ?? [])
       .filter((s) => s.type === 'TOTAL' && Array.isArray(s.table) && s.table.length)
@@ -36,11 +33,41 @@ export function createStandings({env, provider, league}) {
       }));
     return {
       competition: r.body.competition?.name || selected.name,
+      source: 'football-data.org',
       season: r.body.season?.startDate?.slice(0, 4) ?? null,
       groups,
       fetchedAt: r.at,
       stale: !!r.stale,
     };
   }
+
+  async function standings(leagueKey) {
+    const selected = await league(leagueKey);
+    if (!selected?.fdCode)
+      throw new AppError(404, 'standings', 'Standings are not available for this competition.');
+
+    let firstError = null;
+    if (env.FOOTBALL_DATA_ORG_KEY) {
+      try {
+        return await fromFootballData(selected);
+      } catch (e) {
+        firstError = e;
+      }
+    }
+    const alternative = await strikerApi.standingsFor(selected.fdCode);
+    if (alternative) {
+      // A single table needs no heading.
+      const groups =
+        alternative.groups.length === 1
+          ? [{...alternative.groups[0], name: null}]
+          : alternative.groups.slice(0, MAX_GROUPS);
+      return {competition: selected.name, source: 'StrikerAPI', ...alternative, groups};
+    }
+    throw (
+      firstError ??
+      new AppError(503, 'not_configured', 'No standings source is configured for this competition.')
+    );
+  }
+
   return {standings};
 }

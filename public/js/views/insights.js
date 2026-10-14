@@ -35,8 +35,42 @@ function headToHeadBlock(data) {
   return `<p class="muted">${esc(data.home.name)} ${h.winsA}W · ${h.draws}D · ${esc(data.away.name)} ${h.winsB}W (last 12 months)</p><ul class="games">${list}</ul>`;
 }
 
+/** All-time meetings in this competition (StrikerAPI). */
+function competitionMeetings(h, home, away) {
+  if (!h.meetings) return '<p class="muted">No meetings in this competition.</p>';
+  const since = h.firstMeeting ? ' since ' + esc(h.firstMeeting.slice(0, 4)) : '';
+  const list = h.matches
+    .map((m) => `<li>${esc(m.date)} · ${esc(m.home)} ${esc(m.score)} ${esc(m.away)}</li>`)
+    .join('');
+  return `<p class="muted">${h.meetings} meetings${since}: ${esc(home)} ${h.winsHome}W · ${h.draws}D · ${esc(away)} ${h.winsAway}W (goals ${h.goalsHome}–${h.goalsAway})</p><ul class="games">${list}</ul>`;
+}
+
+function eloBlock(elo) {
+  const pct = Math.round(elo.expectedHomeScore * 100);
+  return `<p class="muted">${esc(elo.home.name)} ${Math.round(elo.home.elo)} · ${esc(elo.away.name)} ${Math.round(elo.away.elo)}. Expected score for the home side: ${pct}% (includes a 60-point home bonus). Ratings move only on this competition’s matches, so they are thin and not comparable across leagues.</p>`;
+}
+
+function marketBlock(m) {
+  const [h, d, a] = m.p;
+  const books = m.books ? ` across ${m.books} sportsbooks` : '';
+  return `<p class="muted">Home ${h}% · Draw ${d}% · Away ${a}%${books}, margin removed. Bookmaker prices, shown for comparison only.</p>`;
+}
+
 function render(data) {
-  return `<h3>Form &amp; head-to-head</h3><div class="insight-grid">${teamColumn(data.home)}${teamColumn(data.away)}</div><h4>Recent meetings</h4>${headToHeadBlock(data)}`;
+  const sections = [];
+  const forecast = state.analysis ?? {};
+  if (data.home && data.away)
+    sections.push(
+      `<h3>Form &amp; head-to-head</h3><div class="insight-grid">${teamColumn(data.home)}${teamColumn(data.away)}</div><h4>Recent meetings</h4>${headToHeadBlock(data)}`,
+    );
+  if (data.competitionHeadToHead)
+    sections.push(
+      `<h4>All-time meetings in this competition</h4>${competitionMeetings(data.competitionHeadToHead, forecast.home, forecast.away)}`,
+    );
+  if (data.elo) sections.push(`<h4>Competition Elo</h4>${eloBlock(data.elo)}`);
+  if (data.market && !String(forecast.modelVersion || '').startsWith('market'))
+    sections.push(`<h4>Market view</h4>${marketBlock(data.market)}`);
+  return sections.join('');
 }
 
 /** Fills the optional "form" section of the open analysis dialog. Never blocks the forecast. */

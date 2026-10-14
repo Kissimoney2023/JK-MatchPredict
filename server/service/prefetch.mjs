@@ -1,4 +1,5 @@
 import {todayIso} from '../util.mjs';
+import {saLeagueFor} from '../strikerapi.mjs';
 
 const UPCOMING_WINDOW_DAYS = 30;
 const DEFAULT_COMPETITIONS = 'CL';
@@ -13,7 +14,16 @@ const OPEN_STATUSES = ['NS', 'TBD'];
  * Requests use exactly the parameters the app uses (today .. today+30), so the page hits the
  * same cache entries.
  */
-export function createPrefetch({env, now, provider, catalog, fixtures, standings, history}) {
+export function createPrefetch({
+  env,
+  now,
+  provider,
+  catalog,
+  fixtures,
+  standings,
+  history,
+  strikerApi,
+}) {
   const competitions = () =>
     (env.PREFETCH_COMPETITIONS || DEFAULT_COMPETITIONS)
       .split(',')
@@ -62,6 +72,13 @@ export function createPrefetch({env, now, provider, catalog, fixtures, standings
       entry.fixtures = list?.fixtures.length ?? 0;
 
       entry.standings = !!(await step(`${code} standings`, () => standings(selected.key)));
+
+      // StrikerAPI (when configured): the market schedule and Elo ratings, cached for hours.
+      const saLeague = saLeagueFor(code);
+      if (strikerApi.enabled() && saLeague) {
+        await step(`${code} StrikerAPI schedule`, () => strikerApi.schedule(saLeague));
+        await step(`${code} StrikerAPI ratings`, () => strikerApi.ratings(saLeague));
+      }
 
       const teamIds = new Set();
       for (const f of list?.fixtures ?? []) {

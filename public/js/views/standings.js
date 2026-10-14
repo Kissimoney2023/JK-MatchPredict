@@ -20,7 +20,8 @@ function renderTable(group) {
 function renderStandings(data) {
   if (!data.groups.length)
     return '<p class="muted">No standings are published for this competition yet.</p>';
-  const note = `<p class="muted">${esc(data.competition)}${data.season ? ' · ' + esc(data.season) + ' season' : ''} · updated ${esc(formatDate(data.fetchedAt))}${data.stale ? ' (saved copy)' : ''}</p>`;
+  const source = data.source ? ' · source: ' + esc(data.source) : '';
+  const note = `<p class="muted">${esc(data.competition)}${data.season ? ' · ' + esc(data.season) + ' season' : ''} · updated ${esc(formatDate(data.fetchedAt))}${data.stale ? ' (saved copy)' : ''}${source}</p>`;
   return note + data.groups.map(renderTable).join('');
 }
 

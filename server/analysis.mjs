@@ -1,6 +1,7 @@
 export function analyze(f) {
   const labels = [f.home, 'Draw', f.away],
     order = [0, 1, 2].sort((a, b) => f.p[b] - f.p[a]);
+  const market = String(f.modelVersion || '').startsWith('market');
   const n = order[0],
     top = f.p[n],
     margin = top - f.p[order[1]],
@@ -63,8 +64,11 @@ export function analyze(f) {
     verdict:
       margin < 8 || top < 45
         ? 'Consider skipping this match: the forecast does not separate the outcomes strongly.'
-        : 'A probability-based lean only. Compare offered odds before assessing value.',
-    disclaimer:
-      'No bookmaker odds are connected, so these tips do not establish value or expected profit. Predictions cover 90 minutes plus stoppage time.',
+        : market
+          ? 'The market’s view with the margin removed. There is no edge over the bookmakers in it.'
+          : 'A probability-based lean only. Compare offered odds before assessing value.',
+    disclaimer: market
+      ? 'These probabilities come from bookmaker prices, so these tips carry no edge or expected profit. Predictions cover 90 minutes plus stoppage time.'
+      : 'No bookmaker odds are connected, so these tips do not establish value or expected profit. Predictions cover 90 minutes plus stoppage time.',
   };
 }

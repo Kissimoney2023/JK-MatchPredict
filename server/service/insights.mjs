@@ -9,7 +9,7 @@ const teamIdsOf = (items) => [
 ];
 
 /** Team form and head-to-head, derived from the cached football-data.org histories. */
-export function createInsights({env, now, storage, history, lookup}) {
+export function createInsights({env, now, storage, history, lookup, strikerApi}) {
   const {read} = storage;
 
   /**
@@ -36,16 +36,8 @@ export function createInsights({env, now, storage, history, lookup}) {
     });
   }
 
-  /** Detailed form and recent meetings for one listed match (may fetch the two histories). */
-  async function insights(key, listingId) {
-    if (!env.FOOTBALL_DATA_ORG_KEY)
-      throw new AppError(503, 'not_configured', 'football-data.org key is not configured.');
-    if (!/^[a-f0-9]{64}$/.test(listingId || ''))
-      throw new AppError(400, 'listing', 'Refresh the match browser first.');
-    const listing = await read('listing/' + listingId);
-    const known = listing?.items?.find((f) => f.key === key);
-    if (!known) throw new AppError(404, 'fixture', 'Load this match from the match browser first.');
-
+  /** Recent form and last-12-months meetings from football-data.org histories (may fetch two). */
+  async function formInsights(known) {
     let target = known;
     if (!Number.isInteger(known.homeTeamId)) {
       try {
@@ -65,6 +57,41 @@ export function createInsights({env, now, storage, history, lookup}) {
       fetchedAt: Math.min(h.at, a.at),
       stale: !!(h.stale || a.stale),
     };
+  }
+
+  /**
+   * Detailed insights for one listed match: recent form and 12-month meetings
+   * (football-data.org), plus, when StrikerAPI is configured, all-time competition
+   * head-to-head, competition Elo ratings and the market line. Each part is optional.
+   */
+  async function insights(key, listingId) {
+    if (!env.FOOTBALL_DATA_ORG_KEY && !strikerApi.enabled())
+      throw new AppError(503, 'not_configured', 'No insights data source is configured.');
+    if (!/^[a-f0-9]{64}$/.test(listingId || ''))
+      throw new AppError(400, 'listing', 'Refresh the match browser first.');
+    const listing = await read('listing/' + listingId);
+    const known = listing?.items?.find((f) => f.key === key);
+    if (!known) throw new AppError(404, 'fixture', 'Load this match from the match browser first.');
+
+    const [form, market, elo, competitionHeadToHead] = await Promise.all([
+      env.FOOTBALL_DATA_ORG_KEY
+        ? formInsights(known).then(
+            (value) => value,
+            (error) => ({error}),
+          )
+        : null,
+      strikerApi.marketFor(known),
+      strikerApi.eloFor(known),
+      strikerApi.headToHeadFor(known),
+    ]);
+    const formResult = form?.error ? null : form;
+    const extras = {market, elo, competitionHeadToHead};
+    // Nothing at all to show: surface the form error instead of an empty panel.
+    if (!formResult && !market && !elo && !competitionHeadToHead)
+      throw (
+        form?.error ?? new AppError(404, 'insights', 'No insights are available for this match.')
+      );
+    return {home: null, away: null, headToHead: null, ...formResult, ...extras};
   }
 
   return {withForm, insights};

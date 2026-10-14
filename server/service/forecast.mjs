@@ -4,7 +4,7 @@ import {probabilities, isOpen, sameMatch, goalModel} from '../model.mjs';
 import {ratingsForecast} from '../ratings.mjs';
 import {analyze} from '../analysis.mjs';
 
-export function createForecast({env, store, now, storage, provider, lookup, history}) {
+export function createForecast({env, store, now, storage, provider, lookup, history, strikerApi}) {
   const {read} = storage;
   const {mappedFD, fresh} = lookup;
 
@@ -53,6 +53,27 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
     };
   }
 
+  /** Probabilities from bookmaker prices (StrikerAPI schedule), margin removed. */
+  function marketRecord(f, market) {
+    return {
+      ...f,
+      p: market.p,
+      source: 'StrikerAPI · market consensus',
+      fallback: true,
+      modelVersion: 'market-shin-v1',
+      marketBooks: market.books,
+      marketOverround: market.overround,
+      marketFetchedAt: market.fetchedAt,
+      explanation: `Median three-way line across ${market.books ?? 'several'} sportsbooks with the bookmaker margin (${market.overround}%) removed using Shin's method. These are bookmaker prices, not an independent model, so they carry no edge and are not a recommendation to bet.`,
+    };
+  }
+
+  /** Forecast when the primary API has none: market consensus first, then the history models. */
+  async function fallbackForecast(f, teamIds) {
+    const market = await strikerApi.marketFor(f);
+    return market ? marketRecord(f, market) : model(f, teamIds);
+  }
+
   async function forecast(key, listingId) {
     if (!/^[a-f0-9]{64}$/.test(listingId || ''))
       throw new AppError(400, 'listing', 'Refresh the match browser first.');
@@ -96,10 +117,10 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
           );
         record = {...f, p, source: 'API-Football', fallback: false, providerFetchedAt: d.at};
       } catch (e) {
-        if (!env.FOOTBALL_DATA_ORG_KEY) throw e;
-        record = await model(f, teamIds);
+        if (!env.FOOTBALL_DATA_ORG_KEY && !strikerApi.marketEnabled()) throw e;
+        record = await fallbackForecast(f, teamIds);
       }
-    } else record = await model(f, teamIds);
+    } else record = await fallbackForecast(f, teamIds);
 
     const forecastAt = now();
     const forecastId = hash(
