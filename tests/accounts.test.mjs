@@ -1,39 +1,42 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {createService, hash} from '../server/service.mjs';
 import {makeHandler} from '../server/handler.mjs';
 import {createMemoryStore} from '../server/store/memory.mjs';
-import {normalizeEmail} from '../server/service/accounts.mjs';
+import {createStorage} from '../server/service/storage.mjs';
+import {createPickStore, MAX_PICKS} from '../server/service/pickstore.mjs';
+import {createSupabase} from '../server/supabase.mjs';
+import {createFakeSupabase, SERVICE_KEY, SUPABASE_URL} from './helpers/fake-supabase.mjs';
 
 const base = Date.parse('2026-10-14T10:00:00Z');
 const ORIGIN = 'https://app.example';
+const DAY = 86_400_000;
 
-/** A durable-looking store (accounts refuse the temporary in-memory store). */
-const durableStore = () => ({...createMemoryStore(), kind: 'redis'});
+const GITHUB_USER = {
+  id: '11111111-1111-4111-8111-111111111111',
+  email: 'fan@example.com',
+  user_metadata: {user_name: 'octofan', avatar_url: 'https://avatars.example/a.png'},
+};
 
-function setup({env = {}, store = durableStore(), emailStatus = 200} = {}) {
+function setup({configured = true, env = {}} = {}) {
   let clock = base;
-  const emails = [];
-  const fetcher = async (url, opts = {}) => {
-    if (String(url).startsWith('https://api.resend.com/')) {
-      emails.push({url, opts, body: JSON.parse(opts.body)});
-      return emailStatus === 200
-        ? Response.json({id: 'email_1'})
-        : Response.json({message: 'nope'}, {status: emailStatus});
-    }
-    return Response.json({}, {status: 404});
-  };
+  const db = createFakeSupabase();
+  const store = createMemoryStore();
   const service = createService({
-    env: {RESEND_API_KEY: 'resend-secret', AUTH_FROM_EMAIL: 'JK <login@jk.example>', ...env},
+    env: configured ? {SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY, ...env} : env,
     store,
-    fetcher,
+    fetcher: db.fetcher,
     now: () => clock,
   });
-  const lastToken = () => {
-    const text = emails.at(-1).body.text;
-    return text.split('/?login=')[1].split(' ')[0].split(String.fromCharCode(10))[0];
-  };
-  return {service, store, emails, lastToken, advance: (ms) => (clock += ms)};
+  return {service, store, db, advance: (ms) => (clock += ms)};
+}
+
+/** Runs the whole sign-in: start, "GitHub", complete. */
+async function signIn(x, {user = GITHUB_USER, anonymousSid = null, ip = '1.1.1.1'} = {}) {
+  const {url, verifier} = await x.service.accounts.startLogin({origin: ORIGIN, ip});
+  const code = x.db.issueCode(user, url);
+  return x.service.accounts.completeLogin({code, verifier, anonymousSid});
 }
 
 const pick = (canonical, createdAt) => ({
@@ -52,171 +55,195 @@ const pick = (canonical, createdAt) => ({
   score: null,
 });
 
-test('email normalisation accepts plausible addresses only', () => {
-  assert.equal(normalizeEmail('  Person@Example.COM '), 'person@example.com');
-  for (const bad of [
-    '',
-    'no-at',
-    'a@b',
-    '@x.com',
-    'a@@x.com',
-    'a b@x.com',
-    'a@x.',
-    null,
-    'a@x.com\nbcc:evil@x.com',
-  ])
-    assert.equal(normalizeEmail(bad), null, String(bad));
-});
-
-test('accounts switch themselves off without durable storage or an email sender', async () => {
-  const memory = setup({store: createMemoryStore()});
-  assert.equal(memory.service.accounts.info().enabled, false);
+test('accounts switch themselves off until Supabase is configured', async () => {
+  const off = setup({configured: false});
+  assert.equal(off.service.accounts.info().enabled, false);
   await assert.rejects(
-    () => memory.service.accounts.requestLogin({email: 'a@b.co', ip: '1.1.1.1', origin: ORIGIN}),
-    /persistent storage/,
+    () => off.service.accounts.startLogin({origin: ORIGIN, ip: '1.1.1.1'}),
+    /not configured/,
   );
-  const noEmail = setup({env: {RESEND_API_KEY: ''}});
-  assert.equal(noEmail.service.accounts.info().enabled, false);
-  assert.equal(setup().service.accounts.info().enabled, true);
+  assert.equal(await off.service.accounts.resolve('a'.repeat(64)), null);
+  assert.deepEqual(setup().service.accounts.info(), {enabled: true, providers: ['github']});
+  assert.equal(off.service.status().accounts.enabled, false);
 });
 
-test('login request sends one email through Resend with a one-time link', async () => {
-  const x = setup();
-  const reply = await x.service.accounts.requestLogin({
-    email: 'Fan@Example.com',
-    ip: '1.1.1.1',
-    origin: ORIGIN,
-  });
-  assert.deepEqual(reply, {ok: true});
-  assert.equal(x.emails.length, 1);
-  const mail = x.emails[0];
-  assert.equal(mail.opts.headers.Authorization, 'Bearer resend-secret');
-  assert.deepEqual(mail.body.to, ['fan@example.com']);
-  assert.equal(mail.body.from, 'JK <login@jk.example>');
-  assert.ok(mail.body.text.includes(ORIGIN + '/?login='));
-  assert.equal(x.lastToken().length, 64);
-
-  await assert.rejects(
-    () => x.service.accounts.requestLogin({email: 'not-an-email', ip: '1.1.1.1', origin: ORIGIN}),
-    /valid email/,
+test('startLogin builds a GitHub PKCE URL whose challenge matches the verifier', async () => {
+  const x = setup({env: {SITE_URL: 'https://prod.example/'}});
+  const {url, verifier} = await x.service.accounts.startLogin({origin: ORIGIN, ip: '1.1.1.1'});
+  const u = new URL(url);
+  assert.equal(u.origin + u.pathname, SUPABASE_URL + '/auth/v1/authorize');
+  assert.equal(u.searchParams.get('provider'), 'github');
+  assert.equal(u.searchParams.get('redirect_to'), 'https://prod.example/', 'SITE_URL wins');
+  assert.equal(u.searchParams.get('code_challenge_method'), 's256');
+  assert.equal(
+    u.searchParams.get('code_challenge'),
+    createHash('sha256').update(verifier).digest('base64url'),
   );
+  assert.ok(verifier.length >= 43 && verifier.length <= 128);
+  assert.ok(!url.includes(SERVICE_KEY), 'the service key must never appear in a browser URL');
+
+  const second = await x.service.accounts.startLogin({origin: ORIGIN, ip: '1.1.1.1'});
+  assert.notEqual(second.verifier, verifier);
 });
 
-test('email sending is rate limited per address and per client', async () => {
+test('sign-in start is rate limited per client address', async () => {
   const x = setup();
-  for (let i = 0; i < 3; i++)
-    await x.service.accounts.requestLogin({email: 'a@b.co', ip: '2.2.2.2', origin: ORIGIN});
+  for (let i = 0; i < 30; i++) await x.service.accounts.startLogin({origin: ORIGIN, ip: '5.5.5.5'});
   await assert.rejects(
-    () => x.service.accounts.requestLogin({email: 'a@b.co', ip: '2.2.2.2', origin: ORIGIN}),
+    () => x.service.accounts.startLogin({origin: ORIGIN, ip: '5.5.5.5'}),
     /budget/,
   );
-  assert.equal(x.emails.length, 3);
-
-  const y = setup();
-  for (let i = 0; i < 10; i++)
-    await y.service.accounts.requestLogin({email: `p${i}@b.co`, ip: '3.3.3.3', origin: ORIGIN});
-  await assert.rejects(
-    () => y.service.accounts.requestLogin({email: 'p99@b.co', ip: '3.3.3.3', origin: ORIGIN}),
-    /budget/,
-  );
+  await x.service.accounts.startLogin({origin: ORIGIN, ip: '6.6.6.6'}); // someone else is fine
 });
 
-test('a provider failure is reported without pretending the email was sent', async () => {
-  const x = setup({emailStatus: 500});
-  await assert.rejects(
-    () => x.service.accounts.requestLogin({email: 'a@b.co', ip: '1.1.1.1', origin: ORIGIN}),
-    /Could not send/,
-  );
-});
-
-test('a sign-in token works once, expires after 15 minutes and rejects junk', async () => {
+test('completeLogin stores the profile and a hashed server-side session', async () => {
   const x = setup();
-  await x.service.accounts.requestLogin({email: 'a@b.co', ip: '1.1.1.1', origin: ORIGIN});
-  const token = x.lastToken();
+  const result = await signIn(x);
+  assert.equal(result.account.email, 'fan@example.com');
+  assert.equal(result.account.name, 'octofan');
+  assert.equal(result.account.id, GITHUB_USER.id);
+  assert.equal(result.authToken.length, 64);
 
-  const session = await x.service.accounts.verifyLogin({token, anonymousSid: null});
-  assert.equal(session.email, 'a@b.co');
-  assert.equal(session.authToken.length, 64);
+  assert.equal(x.db.tables.profiles.length, 1);
+  assert.equal(x.db.tables.profiles[0].display_name, 'octofan');
+  assert.equal(x.db.tables.profiles[0].provider, 'github');
+  const session = x.db.tables.sessions[0];
+  assert.equal(session.token_hash, hash(result.authToken));
+  assert.ok(!JSON.stringify(x.db.tables).includes(result.authToken), 'raw token is never stored');
+
+  await signIn(x, {ip: '2.2.2.2'}); // signing in again updates, not duplicates, the profile
+  assert.equal(x.db.tables.profiles.length, 1);
+  assert.equal(x.db.tables.sessions.length, 2);
+});
+
+test('sign-in codes are single use and bound to the PKCE verifier', async () => {
+  const x = setup();
+  const {url, verifier} = await x.service.accounts.startLogin({origin: ORIGIN, ip: '1.1.1.1'});
+  const code = x.db.issueCode(GITHUB_USER, url);
+
   await assert.rejects(
-    () => x.service.accounts.verifyLogin({token, anonymousSid: null}),
-    /invalid or has expired/,
+    () => x.service.accounts.completeLogin({code, verifier: 'a'.repeat(64), anonymousSid: null}),
+    /could not be completed/,
+  );
+  // The failed attempt burned the code: even the right verifier cannot reuse it.
+  await assert.rejects(
+    () => x.service.accounts.completeLogin({code, verifier, anonymousSid: null}),
+    /could not be completed/,
+  );
+
+  const fresh = x.db.issueCode(GITHUB_USER, url);
+  assert.ok(await x.service.accounts.completeLogin({code: fresh, verifier, anonymousSid: null}));
+  await assert.rejects(
+    () => x.service.accounts.completeLogin({code: fresh, verifier, anonymousSid: null}),
+    /could not be completed/,
   );
   await assert.rejects(
-    () => x.service.accounts.verifyLogin({token: 'zzz', anonymousSid: null}),
-    /invalid/,
+    () => x.service.accounts.completeLogin({code: '', verifier, anonymousSid: null}),
+    /could not be completed/,
   );
-
-  await x.service.accounts.requestLogin({email: 'late@b.co', ip: '1.1.1.1', origin: ORIGIN});
-  const late = x.lastToken();
-  x.advance(16 * 60_000);
   await assert.rejects(
-    () => x.service.accounts.verifyLogin({token: late, anonymousSid: null}),
+    () => x.service.accounts.completeLogin({code: 'x', verifier: null, anonymousSid: null}),
     /expired/,
   );
 });
 
-test('concurrent use of one token signs in exactly once', async () => {
+test('sessions resolve, are cached briefly, and end on logout or expiry', async () => {
   const x = setup();
-  await x.service.accounts.requestLogin({email: 'a@b.co', ip: '1.1.1.1', origin: ORIGIN});
-  const token = x.lastToken();
-  const results = await Promise.allSettled([
-    x.service.accounts.verifyLogin({token, anonymousSid: null}),
-    x.service.accounts.verifyLogin({token, anonymousSid: null}),
-  ]);
-  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
-});
+  const {authToken, account} = await signIn(x);
+  const selects = () =>
+    x.db.requests.filter((r) => r.path.endsWith('/sessions') && r.method === 'GET').length;
 
-test('sessions resolve to the account and end on logout', async () => {
-  const x = setup();
-  await x.service.accounts.requestLogin({email: 'a@b.co', ip: '1.1.1.1', origin: ORIGIN});
-  const {authToken, accountId} = await x.service.accounts.verifyLogin({
-    token: x.lastToken(),
-    anonymousSid: null,
-  });
-  assert.deepEqual(await x.service.accounts.resolve(authToken), {id: accountId, email: 'a@b.co'});
+  assert.deepEqual(await x.service.accounts.resolve(authToken), account);
+  await x.service.accounts.resolve(authToken);
+  assert.equal(selects(), 1, 'the second lookup comes from the short cache');
   assert.equal(await x.service.accounts.resolve('0'.repeat(64)), null);
+  assert.equal(await x.service.accounts.resolve('not-a-token'), null);
   assert.equal(await x.service.accounts.resolve(undefined), null);
 
   await x.service.accounts.logout(authToken);
-  assert.equal(await x.service.accounts.resolve(authToken), null);
+  assert.equal(await x.service.accounts.resolve(authToken), null, 'logout takes effect at once');
+  assert.equal(x.db.tables.sessions[0].revoked, true);
 
-  const again = await (async () => {
-    await x.service.accounts.requestLogin({email: 'a@b.co', ip: '9.9.9.9', origin: ORIGIN});
-    return x.service.accounts.verifyLogin({token: x.lastToken(), anonymousSid: null});
-  })();
-  assert.equal(again.accountId, accountId, 'the same email always maps to the same account');
-
-  x.advance(91 * 24 * 3_600_000);
-  assert.equal(
-    await x.service.accounts.resolve(again.authToken),
-    null,
-    'sessions expire after 90 days',
-  );
+  const other = (await signIn(x, {ip: '3.3.3.3'})).authToken;
+  assert.ok(await x.service.accounts.resolve(other), 'other sessions are unaffected');
+  x.advance(91 * DAY);
+  assert.equal(await x.service.accounts.resolve(other), null, 'sessions expire after 90 days');
 });
 
-test('signing in merges anonymous picks into the account without duplicates', async () => {
+test('signing in merges anonymous picks into the account, once, without duplicates', async () => {
   const x = setup();
-  const anon = hash('browser-1');
-  await x.store.setJSON('picks/' + anon, {items: [pick('m1', 300), pick('m2', 200)]});
+  const phone = hash('browser-1');
+  const laptop = hash('browser-2');
+  await x.store.setJSON('picks/' + phone, {items: [pick('m1', 300), pick('m2', 200)]});
+  await x.store.setJSON('picks/' + laptop, {items: [pick('m2', 250), pick('m3', 400)]});
 
-  await x.service.accounts.requestLogin({email: 'a@b.co', ip: '1.1.1.1', origin: ORIGIN});
-  const first = await x.service.accounts.verifyLogin({token: x.lastToken(), anonymousSid: anon});
+  const first = await signIn(x, {anonymousSid: phone});
   assert.equal(first.merged, 2);
-  assert.equal((await x.service.picks(first.accountId)).length, 2);
-
-  // A second device with an overlapping pick and a new one.
-  const phone = hash('browser-2');
-  await x.store.setJSON('picks/' + phone, {items: [pick('m2', 250), pick('m3', 400)]});
-  await x.service.accounts.requestLogin({email: 'a@b.co', ip: '1.1.1.2', origin: ORIGIN});
-  const second = await x.service.accounts.verifyLogin({token: x.lastToken(), anonymousSid: phone});
+  const second = await signIn(x, {anonymousSid: laptop, ip: '2.2.2.2'});
   assert.equal(second.merged, 1, 'only the new match is added');
-  const all = await x.service.picks(first.accountId);
+  const again = await signIn(x, {anonymousSid: laptop, ip: '3.3.3.3'});
+  assert.equal(again.merged, 0, 'repeating the merge adds nothing');
+
+  const mine = await x.service.picks('acct:' + GITHUB_USER.id);
   assert.deepEqual(
-    all.map((p) => p.canonical),
+    mine.map((p) => p.canonical),
     ['m3', 'm1', 'm2'],
     'newest first',
   );
-  assert.equal((await x.service.picks(anon)).length, 2, 'the browser profile is left intact');
+  assert.equal(mine[0].forecast.home, 'A', 'the original forecast is kept');
+  assert.equal((await x.service.picks(phone)).length, 2, 'the browser profile is left intact');
+});
+
+// ---------- pick store ----------
+
+test('account picks: one per match, capped, and results only fill pending picks', async () => {
+  const db = createFakeSupabase();
+  const supabase = createSupabase({url: SUPABASE_URL, key: SERVICE_KEY, fetcher: db.fetcher});
+  const storage = createStorage({store: createMemoryStore(), now: () => base});
+  const store = createPickStore({storage, supabase});
+  const sid = 'acct:' + GITHUB_USER.id;
+  db.tables.profiles.push({id: GITHUB_USER.id});
+
+  assert.equal(await store.add(sid, pick('m1', 100)), true);
+  assert.equal(
+    await store.add(sid, pick('m1', 200)),
+    false,
+    'the same match cannot be picked twice',
+  );
+
+  await store.applyResults(
+    sid,
+    new Map([[hash('m1'), {result: 'correct', score: '2–1', settledAt: 500}]]),
+  );
+  let [stored] = await store.list(sid);
+  assert.equal(stored.result, 'correct');
+  assert.equal(stored.score, '2–1');
+  assert.equal(stored.settledAt, 500);
+  await store.applyResults(
+    sid,
+    new Map([[hash('m1'), {result: 'incorrect', score: '0–0', settledAt: 900}]]),
+  );
+  [stored] = await store.list(sid);
+  assert.equal(stored.result, 'correct', 'a settled pick is never rewritten');
+
+  for (let i = 0; i < MAX_PICKS - 1; i++)
+    db.tables.picks.push({
+      user_id: GITHUB_USER.id,
+      pick_id: 'x' + i,
+      canonical: 'x' + i,
+      outcome: 0,
+      created_at: new Date(i).toISOString(),
+      forecast: {},
+    });
+  await assert.rejects(() => store.add(sid, pick('overflow', 1)), /500-pick limit/);
+});
+
+test('a database outage is reported without leaking details', async () => {
+  const x = setup();
+  const {authToken} = await signIn(x);
+  x.db.setFailing(true);
+  await assert.rejects(() => x.service.picks('acct:' + GITHUB_USER.id), /temporarily unavailable/);
+  assert.ok(authToken);
 });
 
 // ---------- through the HTTP handler ----------
@@ -234,7 +261,7 @@ const cookieHeader = (jar) =>
     .map(([k, v]) => `${k}=${v}`)
     .join('; ');
 
-test('HTTP: sign in on one device, see the same picks on another, sign out', async () => {
+test('HTTP: GitHub sign-in on one device shows the same picks on another, then sign out', async () => {
   const x = setup();
   const handler = makeHandler(() => x.service);
   const get = (action, jar = {}) =>
@@ -252,72 +279,92 @@ test('HTTP: sign in on one device, see the same picks on another, sign out', asy
       }),
     );
 
-  // Laptop: anonymous browser with a saved pick.
+  // Laptop: anonymous, with one saved pick.
   const first = await get('status');
   const laptop = {jk_session: cookiesFrom(first).jk_session};
-  assert.deepEqual((await first.clone().json()).account, null);
-  assert.equal((await first.json()).accounts.enabled, true);
+  const statusBody = await first.json();
+  assert.equal(statusBody.account, null);
+  assert.equal(statusBody.accounts.enabled, true);
   await x.store.setJSON('picks/' + hash(laptop.jk_session), {items: [pick('m1', 100)]});
 
-  // Cross-site request is rejected.
-  assert.equal(
-    (await post({action: 'login-request', email: 'a@b.co'}, laptop, 'https://evil.test')).status,
-    403,
+  assert.equal((await post({action: 'login-start'}, laptop, 'https://evil.test')).status, 403);
+
+  const started = await post({action: 'login-start'}, laptop);
+  assert.equal(started.status, 200);
+  const {url: authorizeUrl} = await started.json();
+  const startCookies = started.headers.getSetCookie().find((c) => c.startsWith('jk_pkce='));
+  assert.ok(startCookies.includes('HttpOnly') && startCookies.includes('Max-Age=600'));
+  laptop.jk_pkce = cookiesFrom(started).jk_pkce;
+
+  // "GitHub" redirects back with a code; the page posts it.
+  const code = x.db.issueCode(GITHUB_USER, authorizeUrl);
+  const done = await post({action: 'login-complete', code}, laptop);
+  assert.equal(done.status, 200);
+  assert.deepEqual(await done.clone().json(), {
+    account: {email: 'fan@example.com', name: 'octofan'},
+    avatarUrl: 'https://avatars.example/a.png',
+    merged: 1,
+  });
+  const setCookies = done.headers.getSetCookie();
+  assert.ok(
+    setCookies.some(
+      (c) => c.startsWith('jk_auth=') && c.includes('HttpOnly') && c.includes('Secure'),
+    ),
   );
+  assert.ok(
+    setCookies.some((c) => c.startsWith('jk_pkce=;') && c.includes('Max-Age=0')),
+    'verifier cookie cleared',
+  );
+  laptop.jk_auth = cookiesFrom(done).jk_auth;
+  delete laptop.jk_pkce;
 
-  // Request, then confirm the link.
-  const requested = await post({action: 'login-request', email: 'a@b.co'}, laptop);
-  assert.equal(requested.status, 200);
-  const verified = await post({action: 'login-verify', token: x.lastToken()}, laptop);
-  assert.equal(verified.status, 200);
-  assert.deepEqual(await verified.clone().json(), {email: 'a@b.co', merged: 1});
-  const setCookies = verified.headers.getSetCookie().join(' | ');
-  assert.ok(setCookies.includes('jk_auth='));
-  assert.ok(setCookies.includes('HttpOnly'));
-  assert.ok(setCookies.includes('Secure'));
-  laptop.jk_auth = cookiesFrom(verified).jk_auth;
-
-  assert.equal((await (await get('status', laptop)).json()).account.email, 'a@b.co');
+  assert.equal((await (await get('status', laptop)).json()).account.name, 'octofan');
   assert.equal((await (await get('picks', laptop)).json()).picks.length, 1);
 
-  // Phone: a different browser profile, signed in with the same cookie value flow.
+  // Phone: another browser, signs in as the same person.
   const phoneStart = await get('picks');
   const phone = {jk_session: cookiesFrom(phoneStart).jk_session};
-  assert.equal((await phoneStart.json()).picks.length, 0, 'anonymous phone sees nothing');
-  await post({action: 'login-request', email: 'a@b.co'}, phone);
-  const phoneVerified = await post({action: 'login-verify', token: x.lastToken()}, phone);
-  phone.jk_auth = cookiesFrom(phoneVerified).jk_auth;
+  assert.equal((await phoneStart.json()).picks.length, 0, 'an anonymous phone sees nothing');
+  const phoneStarted = await post({action: 'login-start'}, phone);
+  phone.jk_pkce = cookiesFrom(phoneStarted).jk_pkce;
+  const phoneCode = x.db.issueCode(GITHUB_USER, (await phoneStarted.json()).url);
+  const phoneDone = await post({action: 'login-complete', code: phoneCode}, phone);
+  phone.jk_auth = cookiesFrom(phoneDone).jk_auth;
+  delete phone.jk_pkce;
   assert.equal(
     (await (await get('picks', phone)).json()).picks.length,
     1,
     'same picks on the phone',
   );
 
-  // The link cannot be reused.
-  const reuse = await post({action: 'login-verify', token: x.lastToken()}, {});
-  assert.equal(reuse.status, 400);
+  // A code without the matching verifier cookie is refused.
+  const stray = x.db.issueCode(GITHUB_USER, authorizeUrl);
+  assert.equal((await post({action: 'login-complete', code: stray}, {})).status, 400);
 
-  // Sign out: the cookie is cleared and the account is no longer visible.
   const out = await post({action: 'logout'}, phone);
   assert.ok(
     out.headers.getSetCookie().some((c) => c.startsWith('jk_auth=;') && c.includes('Max-Age=0')),
   );
-  assert.equal((await (await get('picks', phone)).json()).picks.length, 0);
+  assert.equal(
+    (await (await get('picks', phone)).json()).picks.length,
+    0,
+    'signed out: anonymous again',
+  );
   assert.equal(
     (await (await get('picks', laptop)).json()).picks.length,
     1,
-    'other devices stay signed in',
+    'the laptop stays signed in',
   );
 });
 
-test('HTTP: sign-in endpoints refuse politely when accounts are disabled', async () => {
-  const x = setup({store: createMemoryStore()});
+test('HTTP: sign-in routes refuse politely when Supabase is not configured', async () => {
+  const x = setup({configured: false});
   const handler = makeHandler(() => x.service);
   const r = await handler(
     new Request(`${ORIGIN}/api/football`, {
       method: 'POST',
       headers: {origin: ORIGIN, 'content-type': 'application/json'},
-      body: JSON.stringify({action: 'login-request', email: 'a@b.co'}),
+      body: JSON.stringify({action: 'login-start'}),
     }),
   );
   assert.equal(r.status, 503);

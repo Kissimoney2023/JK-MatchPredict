@@ -2,18 +2,16 @@ import {AppError} from '../errors.mjs';
 import {hash, HOUR} from '../util.mjs';
 import {isOpen, settle, sameMatch, matchKey} from '../model.mjs';
 
-const MAX_PICKS = 500;
 const FORECAST_MAX_AGE = 2 * HOUR;
 const SETTLE_DELAY = 105 * 60_000;
 const SETTLE_BATCH = 3;
 
-export function createPicks({now, storage, lookup}) {
-  const {read, atomic} = storage;
+/** Virtual picks: save, list and settle. `pickStore` hides where they are kept. */
+export function createPicks({now, storage, lookup, pickStore}) {
+  const {read} = storage;
   const {fresh} = lookup;
 
-  async function picks(sid) {
-    return (await read('picks/' + sid))?.items ?? [];
-  }
+  const picks = (sid) => pickStore.list(sid);
 
   async function save(sid, id, outcome) {
     if (!/^[a-f0-9]{64}$/.test(id) || ![0, 1, 2].includes(outcome))
@@ -28,35 +26,19 @@ export function createPicks({now, storage, lookup}) {
     const current = await fresh(f);
     if (!isOpen(current.f, now()) || !sameMatch(f, current.f))
       throw new AppError(409, 'closed', 'This match changed or is no longer open.');
+    if (!isOpen(f, now())) throw new AppError(409, 'closed', 'Kickoff has passed.');
 
     const canonical = matchKey(f);
-    let added = false;
-    await atomic('picks/' + sid, (old) => {
-      const items = old?.items ?? [];
-      if (!isOpen(f, now())) throw new AppError(409, 'closed', 'Kickoff has passed.');
-      if (items.some((x) => x.canonical === canonical)) {
-        added = false;
-        return undefined;
-      }
-      if (items.length >= MAX_PICKS)
-        throw new AppError(
-          409,
-          'limit',
-          'This browser profile has reached its 500-pick limit. Export your history.',
-        );
-      added = true;
-      const pick = {
-        id: hash(canonical),
-        canonical,
-        outcome,
-        createdAt: now(),
-        forecast: f,
-        result: null,
-        score: null,
-      };
-      return {items: [pick, ...items]};
-    });
-    return {saved: added};
+    const pick = {
+      id: hash(canonical),
+      canonical,
+      outcome,
+      createdAt: now(),
+      forecast: f,
+      result: null,
+      score: null,
+    };
+    return {saved: await pickStore.add(sid, pick)};
   }
 
   async function settlePicks(sid) {
@@ -75,34 +57,9 @@ export function createPicks({now, storage, lookup}) {
         unavailable++;
       }
     }
-    if (changes.size)
-      await atomic('picks/' + sid, (old) => ({
-        items: (old?.items ?? []).map((p) =>
-          changes.has(p.id) && !p.result ? {...p, ...changes.get(p.id)} : p,
-        ),
-      }));
+    await pickStore.applyResults(sid, changes);
     return {checked: eligible.length, settled: changes.size, unavailable};
   }
 
-  /**
-   * Copies the picks of `sourceId` (an anonymous browser profile) into `targetId` (an account),
-   * skipping matches the account already has. Safe to repeat. Returns how many were added.
-   */
-  async function mergePicks(targetId, sourceId) {
-    const source = await picks(sourceId);
-    if (!source.length) return 0;
-    let added = 0;
-    await atomic('picks/' + targetId, (old) => {
-      const items = old?.items ?? [];
-      const have = new Set(items.map((x) => x.canonical));
-      const extra = source.filter((x) => !have.has(x.canonical));
-      added = extra.length;
-      if (!extra.length) return undefined;
-      const merged = [...items, ...extra].sort((a, b) => b.createdAt - a.createdAt);
-      return {items: merged.slice(0, MAX_PICKS)};
-    });
-    return added;
-  }
-
-  return {picks, save, settlePicks, mergePicks};
+  return {picks, save, settlePicks, mergePicks: pickStore.mergeInto};
 }

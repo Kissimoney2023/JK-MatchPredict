@@ -11,6 +11,8 @@ import {createForecast} from './service/forecast.mjs';
 import {createPicks} from './service/picks.mjs';
 import {createPrefetch} from './service/prefetch.mjs';
 import {createAccounts} from './service/accounts.mjs';
+import {createPickStore} from './service/pickstore.mjs';
+import {createSupabase} from './supabase.mjs';
 
 export {AppError} from './errors.mjs';
 export {hash, dates} from './util.mjs';
@@ -48,8 +50,14 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
     history,
     strikerApi,
   });
-  const {picks, save, settlePicks, mergePicks} = createPicks({now, storage, lookup});
-  const accounts = createAccounts({env, store, storage, fetcher, now, mergePicks});
+  // Accounts and their picks live in Supabase (optional); everything else uses the store.
+  const supabase =
+    env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY
+      ? createSupabase({url: env.SUPABASE_URL, key: env.SUPABASE_SERVICE_ROLE_KEY, fetcher})
+      : null;
+  const pickStore = createPickStore({storage, supabase});
+  const {picks, save, settlePicks, mergePicks} = createPicks({now, storage, lookup, pickStore});
+  const accounts = createAccounts({env, supabase, storage, now, mergePicks});
   const prefetch = createPrefetch({
     env,
     now,

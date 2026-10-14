@@ -1240,3 +1240,9 @@ progress::-moz-progress-bar {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.github-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}

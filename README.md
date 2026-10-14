@@ -37,7 +37,7 @@ API_FOOTBALL_DAILY_LIMIT=100
 
 - `API_FOOTBALL_KEY`: direct API-Football/API-Sports key. A RapidAPI credential is not interchangeable.
 - `FOOTBALL_DATA_ORG_KEY`: football-data.org API token.
-- `RESEND_API_KEY`, `AUTH_FROM_EMAIL`, optional `SITE_URL`: email sign-in (see Accounts).
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, optional `SITE_URL`: accounts (see Accounts).
 - `STRIKERAPI_API_KEY`: optional StrikerAPI key (see StrikerAPI above). `STRIKERAPI_MONTHLY_CREDITS`: credit cap, default 450. `STRIKERAPI_MARKET_FORECASTS`: `off` disables market-based forecasts.
 - `CRON_SECRET`: secret for `/api/prefetch` (see Scheduled prefetch). `PREFETCH_COMPETITIONS`: optional competition codes to warm, default `CL`.
 - `API_FOOTBALL_DAILY_LIMIT`: optional daily application budget; default 100. Change it only to match your allowance. Other apps using the same key can consume the provider's quota independently.
@@ -69,18 +69,26 @@ npm run build
 
 The build copies public assets and fonts into `dist` and verifies that the function bundles with esbuild. Automated tests use mocked football responses and a conditional-write storage adapter; they do not prove paid/free plan coverage or real API accuracy.
 
-## Accounts (optional email sign-in)
+## Accounts (optional GitHub sign-in with Supabase)
 
-Without an account, picks live in a private server-side profile tied to the browser's cookie. With accounts, a person signs in with an email magic link and their picks follow them to every device. Signing in is optional; picks saved in the browser are merged into the account on first sign-in (duplicates are skipped).
+Without an account, picks live in a private server-side profile tied to the browser's cookie. With accounts, a person signs in with GitHub (through Supabase Auth) and their picks follow them to every device. Signing in is optional; picks saved in the browser are merged into the account on first sign-in (duplicates are skipped). GitHub needs no domain and no email sender. The button is hidden until Supabase is configured.
 
-**Requirements.** Accounts switch themselves off (the Sign in button is hidden) unless both are in place:
+### One-time setup
 
-1. **Durable storage**: connect Upstash Redis in Vercel Storage. The temporary in-memory store is refused, because accounts and sessions would vanish between requests.
-2. **An email sender**: `RESEND_API_KEY` and `AUTH_FROM_EMAIL` (for example `JK MatchPredict <login@yourdomain.com>`). The sending domain must be verified in Resend, otherwise Resend only delivers to your own address. Optional `SITE_URL` (for example `https://your-app.vercel.app`) fixes the origin used in email links; without it the request's own origin is used.
+1. **Supabase project.** Create one at https://supabase.com. In **SQL Editor**, paste and run [`supabase/schema.sql`](supabase/schema.sql). It creates `profiles`, `sessions` and `picks` with Row Level Security on and no policies, so only the app server (service-role key) can read or write them.
+2. **GitHub OAuth app.** GitHub → Settings → Developer settings → OAuth Apps → New. Homepage URL: your app URL. Authorization callback URL: `https://<your-project-ref>.supabase.co/auth/v1/callback` (shown on Supabase's GitHub provider page). Copy the Client ID and generate a Client Secret.
+3. **Enable the provider.** Supabase → Authentication → Providers → GitHub: enable, paste the Client ID and Secret.
+4. **Allow your site.** Supabase → Authentication → URL Configuration: set **Site URL** to your app URL (for example `https://jk-matchpredict.vercel.app`) and add it, with `/**` at the end, to **Redirect URLs**. Add `http://localhost:3000/**` too if you test locally. Without this, sign-in returns to the wrong place.
+5. **Vercel environment variables** (Settings → Environment Variables), then redeploy:
+   - `SUPABASE_URL`: Project Settings → API → Project URL.
+   - `SUPABASE_SERVICE_ROLE_KEY`: Project Settings → API → `service_role` secret. This key bypasses all security rules: keep it server-side only, never prefix it with `NEXT_PUBLIC_`, and never commit it.
+   - `SITE_URL` (optional): fixes the address people return to after signing in; defaults to the address of the request.
 
-**How it works.** The email contains `<site>/?login=<token>`. Opening it shows a "Finish signing in" button, and only pressing it signs in; this stops mail scanners that merely fetch links from using up the one-time token. The token is 256-bit random, stored hashed, valid for 15 minutes and usable once (also under concurrent use). The browser address bar is cleaned as soon as the page loads. A successful sign-in sets an `HttpOnly`, `SameSite=Lax`, `Secure` cookie (`jk_auth`, 90 days) that is separate from the anonymous profile cookie, so signing out simply removes it. The same email always maps to the same account, and the reply to a sign-in request never reveals whether an account exists.
+### How it works
 
-**Limits.** Three sign-in emails per address per 15 minutes and ten per client address per hour. Accounts store only the email address and the picks; there are no passwords and no profile data. Anyone with access to the mailbox can sign in, as with any magic-link system.
+OAuth with PKCE, done on the server so no Supabase key ever reaches the browser. "Continue with GitHub" asks the server for a sign-in URL; the server keeps a one-time PKCE verifier in a short-lived `HttpOnly` cookie and returns the URL. After GitHub, Supabase redirects back with `?code=`; the page strips it from the address bar and posts it to the server, which exchanges it (code and verifier together; a stolen code alone is useless), saves the profile, opens a 90-day server-side session and merges the browser's picks. The session cookie (`jk_auth`) is `HttpOnly`, `SameSite=Lax` and `Secure`, separate from the anonymous profile cookie, and only a hash of its token is stored. Sign-out revokes the session. Session lookups are cached for a minute per server instance. Picks of signed-in people are rows in `public.picks` (one per match, original forecast kept), which also makes accuracy statistics a simple query.
+
+Stored per person: GitHub user id, email, display name, avatar URL, last sign-in and their picks. No passwords. Limits: 30 sign-in starts per client address per hour. Only GitHub is enabled; Google can be added later with another provider switch plus a small UI change.
 
 ## StrikerAPI (optional enrichment)
 
@@ -160,7 +168,7 @@ Cache and quota updates use Redis with atomic compare-and-set writes. Cache, quo
   - `storage.mjs` (store reads, atomic updates, budgets), `provider.mjs` (cached, rate-limited provider client), `normalize.mjs` (fixture shapes and league mapping),
   - `catalog.mjs`, `fixtures.mjs`, `lookup.mjs` (single-match and cross-provider verification), `forecast.mjs` and `picks.mjs`.
 - `server/service/prefetch.mjs` (budgeted cache warm-up), `history.mjs` (team match history) and `standings.mjs`; `api/prefetch.mjs` is the endpoint.
-- `server/service/accounts.mjs`: magic-link sign-in, sessions and pick merging; `server/handler.mjs` adds the login routes and cookies.
+- `server/service/accounts.mjs` (Supabase Auth GitHub sign-in with PKCE and sessions), `server/supabase.mjs` (REST client), `server/service/pickstore.mjs` (picks in the key-value store for browsers, in Supabase for accounts); `server/handler.mjs` adds the login routes and cookies; `supabase/schema.sql` creates the tables.
 - `server/strikerapi.mjs` (odds conversion, Shin devig, name matching, Elo maths) and `server/service/strikerapi.mjs` (cached StrikerAPI lookups).
 - `server/form.mjs` (recent form and head-to-head from raw histories) and `server/service/insights.mjs`.
 - `server/model.mjs`: normalization and experimental goal model.

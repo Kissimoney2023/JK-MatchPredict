@@ -1,36 +1,14 @@
-import {randomBytes} from 'node:crypto';
+import {createHash, randomBytes} from 'node:crypto';
 import {AppError} from '../errors.mjs';
-import {hash, MINUTE, HOUR, DAY} from '../util.mjs';
+import {hash, HOUR, DAY} from '../util.mjs';
 
-const MAGIC_TTL_MS = 15 * MINUTE;
 const SESSION_DAYS = 90;
-const MAX_EMAIL_LENGTH = 254;
+const SESSION_CACHE_MS = 60_000;
+const MAX_CODE_LENGTH = 512;
 const TOKEN_FORMAT = /^[a-f0-9]{64}$/;
-const INVALID_LINK = 'This sign-in link is invalid or has expired. Request a new one.';
+const PROVIDER = 'github';
 
-/** Trimmed, lower-cased address if it looks like a plausible email, otherwise null. */
-export function normalizeEmail(input) {
-  const email = String(input ?? '')
-    .trim()
-    .toLowerCase();
-  const at = email.indexOf('@');
-  const plausible =
-    email.length >= 3 &&
-    email.length <= MAX_EMAIL_LENGTH &&
-    at > 0 &&
-    at === email.lastIndexOf('@') &&
-    email.indexOf('.', at) > at + 1 &&
-    !email.endsWith('.') &&
-    ![...email].some((c) => c <= ' ');
-  return plausible ? email : null;
-}
-
-const escapeHtml = (s) =>
-  String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+const base64url = (buffer) => Buffer.from(buffer).toString('base64url');
 
 function withoutTrailingSlashes(url) {
   let out = String(url);
@@ -39,118 +17,108 @@ function withoutTrailingSlashes(url) {
 }
 
 /**
- * Optional accounts with email magic links (sent through Resend). An account only links the
- * picks of a person across devices; it needs durable storage (Redis) and an email sender.
+ * Optional accounts through Supabase Auth with GitHub sign-in (OAuth with PKCE). An account
+ * links one person's picks across devices.
  *
- * Flow: requestLogin -> email with `<site>/?login=<token>` -> the app asks the person to
- * confirm (so link-scanning mail filters cannot use the one-time token) -> verifyLogin sets
- * the sign-in cookie and merges the browser's anonymous picks into the account.
+ * Flow: startLogin -> browser goes to GitHub via Supabase -> returns to the app with `?code=`
+ * -> completeLogin exchanges the code (using the PKCE verifier kept in an HttpOnly cookie),
+ * stores a server-side session and merges the browser's anonymous picks into the account.
+ * The Supabase service key never leaves the server.
  */
-export function createAccounts({env, store, storage, fetcher, now, mergePicks}) {
-  const {read, atomic, budget} = storage;
+export function createAccounts({env, supabase, storage, now, mergePicks}) {
+  const {budget} = storage;
+  const sessionCache = new Map(); // token hash -> {account, until}
 
   function info() {
-    if (store.kind === 'memory')
-      return {enabled: false, reason: 'Accounts need persistent storage (Upstash Redis).'};
-    if (!env.RESEND_API_KEY || !env.AUTH_FROM_EMAIL)
-      return {enabled: false, reason: 'Email sign-in is not configured.'};
-    return {enabled: true};
+    return supabase
+      ? {enabled: true, providers: [PROVIDER]}
+      : {enabled: false, reason: 'Sign-in is not configured.'};
   }
   function assertEnabled() {
-    const state = info();
-    if (!state.enabled) throw new AppError(503, 'accounts_disabled', state.reason);
+    if (!supabase) throw new AppError(503, 'accounts_disabled', 'Sign-in is not configured.');
   }
 
-  async function sendEmail(to, link) {
-    const text = [
-      'Open this link to sign in to JK MatchPredict (valid for 15 minutes, works once):',
-      '',
-      link,
-      '',
-      'If you did not ask for it, you can ignore this email.',
-    ].join(String.fromCharCode(10));
-    const html = `<p>Open this link to sign in to JK MatchPredict. It is valid for 15 minutes and works once.</p><p><a href="${escapeHtml(link)}">Sign in</a></p><p style="color:#667">If you did not ask for it, you can ignore this email.</p>`;
-    const response = await fetcher('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {Authorization: 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        from: env.AUTH_FROM_EMAIL,
-        to: [to],
-        subject: 'Your JK MatchPredict sign-in link',
-        text,
-        html,
-      }),
-    });
-    if (!response.ok) {
-      console.warn('[accounts] email provider returned HTTP ' + response.status);
-      throw new AppError(502, 'email', 'Could not send the sign-in email. Please try again later.');
-    }
-  }
-
-  /** Sends a sign-in link. The reply never reveals whether the address already has an account. */
-  async function requestLogin({email: raw, ip, origin}) {
+  /** Begins GitHub sign-in. Returns the URL to visit and the PKCE verifier for a short cookie. */
+  async function startLogin({origin, ip}) {
     assertEnabled();
-    const email = normalizeEmail(raw);
-    if (!email) throw new AppError(400, 'email', 'Enter a valid email address.');
-    await budget('login-ip-' + hash(ip || 'unknown'), 10, HOUR);
-    await budget('login-email-' + hash(email), 3, 15 * MINUTE);
-
-    const token = randomBytes(32).toString('hex');
-    await store.setJSON(
-      'magic/' + hash(token),
-      {email, createdAt: now(), expiresAt: now() + MAGIC_TTL_MS, used: false},
-      {onlyIfNew: true},
-    );
-    const base = withoutTrailingSlashes(env.SITE_URL || origin);
-    await sendEmail(email, base + '/?login=' + token);
-    return {ok: true};
+    await budget('login-ip-' + hash(ip || 'unknown'), 30, HOUR);
+    const verifier = base64url(randomBytes(48));
+    const challenge = base64url(createHash('sha256').update(verifier).digest());
+    const redirectTo = withoutTrailingSlashes(env.SITE_URL || origin) + '/';
+    return {url: supabase.authorizeUrl({provider: PROVIDER, redirectTo, challenge}), verifier};
   }
 
-  /** Consumes a one-time token, creates the sign-in session and merges anonymous picks. */
-  async function verifyLogin({token, anonymousSid}) {
+  /** Finishes sign-in: exchanges the code, upserts the profile, opens a session, merges picks. */
+  async function completeLogin({code, verifier, anonymousSid}) {
     assertEnabled();
-    if (!TOKEN_FORMAT.test(String(token || ''))) throw new AppError(400, 'token', INVALID_LINK);
+    const text = String(code || '');
+    if (!text || text.length > MAX_CODE_LENGTH)
+      throw new AppError(400, 'auth', 'Sign-in could not be completed. Please try again.');
+    if (!verifier)
+      throw new AppError(400, 'auth', 'The sign-in attempt expired. Please start again.');
 
-    const record = await atomic('magic/' + hash(token), (old) => {
-      if (!old || old.used || old.expiresAt <= now())
-        throw new AppError(400, 'token', INVALID_LINK);
-      return {...old, used: true, usedAt: now()};
-    });
+    const result = await supabase.exchangeCode(text, verifier);
+    const user = result?.user;
+    if (!user?.id)
+      throw new AppError(400, 'auth', 'Sign-in could not be completed. Please try again.');
+    const meta = user.user_metadata ?? {};
+    const profile = {
+      id: user.id,
+      email: user.email || meta.email || null,
+      display_name:
+        meta.user_name || meta.preferred_username || meta.name || meta.full_name || null,
+      avatar_url: meta.avatar_url || null,
+      provider: PROVIDER,
+      last_login_at: new Date(now()).toISOString(),
+    };
+    await supabase.insert('profiles', [profile], {onConflict: 'id', merge: true});
 
-    const accountId = hash('acct:' + record.email);
-    await atomic('account/' + accountId, (old) =>
-      old
-        ? {...old, lastLoginAt: now()}
-        : {email: record.email, createdAt: now(), lastLoginAt: now()},
-    );
     const authToken = randomBytes(32).toString('hex');
-    await store.setJSON('auth/' + hash(authToken), {
-      accountId,
-      email: record.email,
-      createdAt: now(),
-    });
-    const merged = anonymousSid ? await mergePicks(accountId, anonymousSid) : 0;
+    await supabase.insert('sessions', [
+      {
+        token_hash: hash(authToken),
+        user_id: user.id,
+        email: profile.email,
+        display_name: profile.display_name,
+        expires_at: new Date(now() + SESSION_DAYS * DAY).toISOString(),
+        revoked: false,
+      },
+    ]);
+    const merged = anonymousSid ? await mergePicks('acct:' + user.id, anonymousSid) : 0;
     return {
       authToken,
-      accountId,
-      email: record.email,
+      account: {id: user.id, email: profile.email, name: profile.display_name},
+      avatarUrl: profile.avatar_url,
       merged,
       maxAgeSeconds: (SESSION_DAYS * DAY) / 1000,
     };
   }
 
-  /** The signed-in account for an auth cookie value, or null. */
+  /** The signed-in account for an auth cookie value, or null (cached for a minute). */
   async function resolve(authToken) {
-    if (!info().enabled || !TOKEN_FORMAT.test(String(authToken || ''))) return null;
-    const session = await read('auth/' + hash(authToken));
-    if (!session || session.revoked || now() - session.createdAt > SESSION_DAYS * DAY) return null;
-    return {id: session.accountId, email: session.email};
+    if (!supabase || !TOKEN_FORMAT.test(String(authToken || ''))) return null;
+    const key = hash(authToken);
+    const cached = sessionCache.get(key);
+    if (cached && cached.until > now()) return cached.account;
+
+    const rows = await supabase.select('sessions', {
+      token_hash: 'eq.' + key,
+      select: 'user_id,email,display_name,expires_at,revoked',
+      limit: '1',
+    });
+    const s = rows?.[0];
+    const valid = s && !s.revoked && Date.parse(s.expires_at) > now();
+    const account = valid ? {id: s.user_id, email: s.email, name: s.display_name} : null;
+    sessionCache.set(key, {account, until: now() + SESSION_CACHE_MS});
+    return account;
   }
 
   async function logout(authToken) {
-    if (!TOKEN_FORMAT.test(String(authToken || ''))) return;
-    await store.setJSON('auth/' + hash(authToken), {revoked: true, createdAt: 0});
+    if (!supabase || !TOKEN_FORMAT.test(String(authToken || ''))) return;
+    const key = hash(authToken);
+    sessionCache.delete(key);
+    await supabase.update('sessions', {token_hash: 'eq.' + key}, {revoked: true});
   }
 
-  return {info, requestLogin, verifyLogin, resolve, logout};
+  return {info, startLogin, completeLogin, resolve, logout};
 }

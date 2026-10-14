@@ -55,11 +55,14 @@ export function makeHandler(deps) {
       const action = url.searchParams.get('action') || 'status';
       const anonymousSid = hash(token);
       const account = await service.accounts.resolve(authToken);
-      const sid = account?.id ?? anonymousSid;
+      const sid = account ? 'acct:' + account.id : anonymousSid;
 
       if (request.method === 'GET') {
         if (action === 'status')
-          return json({...service.status(), account: account ? {email: account.email} : null});
+          return json({
+            ...service.status(),
+            account: account ? {email: account.email, name: account.name} : null,
+          });
         if (action === 'leagues') return json(await service.catalog());
         if (action === 'fixtures') return json(await service.fixtures(url.searchParams));
         if (action === 'insights')
@@ -100,21 +103,31 @@ export function makeHandler(deps) {
         return json(await service.save(sid, body.forecastId, body.outcome));
       if (body.action === 'settle') return json(await service.settlePicks(sid));
 
-      if (body.action === 'login-request')
-        return json(
-          await service.accounts.requestLogin({
-            email: body.email,
-            ip: clientIp(request),
-            origin: url.origin,
-          }),
-        );
-      if (body.action === 'login-verify') {
-        const result = await service.accounts.verifyLogin({token: body.token, anonymousSid});
+      if (body.action === 'login-start') {
+        const {url: authorizeUrl, verifier} = await service.accounts.startLogin({
+          origin: url.origin,
+          ip: clientIp(request),
+        });
+        // The PKCE verifier stays in a short-lived HttpOnly cookie until the sign-in returns.
+        headers.append('Set-Cookie', `jk_pkce=${verifier}; ${cookieAttributes}; Max-Age=600`);
+        return json({url: authorizeUrl});
+      }
+      if (body.action === 'login-complete') {
+        const result = await service.accounts.completeLogin({
+          code: body.code,
+          verifier: cookieValue(cookies, 'jk_pkce'),
+          anonymousSid,
+        });
         headers.append(
           'Set-Cookie',
           `jk_auth=${result.authToken}; ${cookieAttributes}; Max-Age=${result.maxAgeSeconds}`,
         );
-        return json({email: result.email, merged: result.merged});
+        headers.append('Set-Cookie', `jk_pkce=; ${cookieAttributes}; Max-Age=0`);
+        return json({
+          account: {email: result.account.email, name: result.account.name},
+          avatarUrl: result.avatarUrl,
+          merged: result.merged,
+        });
       }
       if (body.action === 'logout') {
         await service.accounts.logout(authToken);
