@@ -17,6 +17,7 @@ const PROVIDERS = {
 };
 const PER_MINUTE_LIMIT = 9;
 const COOLDOWN_MS = MINUTE;
+const PLAN_BLOCK_MS = 6 * 3_600_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 /** Short single-line text for error messages (provider replies never contain our keys). */
@@ -39,6 +40,11 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
     const cacheKey = 'cache/' + hash(kind + ':' + path);
     const cached = await read(cacheKey);
     if (cached && cached.until > now()) return cached;
+
+    // A plan/season restriction will not fix itself soon: do not spend quota retrying it.
+    const blockKey = 'planblock/' + hash(kind + ':' + path);
+    const blocked = await read(blockKey);
+    if (blocked?.until > now()) throw new AppError(403, 'plan', blocked.reason);
 
     const cooldown = await read('cooldown/' + kind);
     if (cooldown?.until > now())
@@ -75,6 +81,12 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
           );
         }
         const body = await response.json();
+        if (body.errors?.plan) {
+          const reason = `${name} plan limit: ${brief(body.errors.plan)}`;
+          console.warn(`[provider:${kind}] ${reason} (${path.split('?')[0]})`);
+          await store.setJSON(blockKey, {until: now() + PLAN_BLOCK_MS, reason});
+          throw new AppError(403, 'plan', reason);
+        }
         if ((body.errors && Object.keys(body.errors).length) || body.errorCode) {
           const detail = brief(body.errors ?? body.message ?? body.errorCode);
           console.warn(`[provider:${kind}] rejected ${path.split('?')[0]}: ${detail}`);

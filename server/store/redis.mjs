@@ -7,6 +7,7 @@ const TTL_BY_PREFIX = {
   'budget/': 2 * DAY,
   'cache/': 2 * DAY,
   'cooldown/': DAY,
+  'planblock/': DAY,
   'listing/': 7 * DAY,
   'forecast/': 30 * DAY,
 };
