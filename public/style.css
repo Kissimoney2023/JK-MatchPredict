@@ -679,6 +679,60 @@ label input {
   margin-top: var(--space-5);
 }
 
+/* ---------- Form chips and insights ---------- */
+.form {
+  display: inline-flex;
+  gap: 3px;
+}
+.chip {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font: 600 12px/1 var(--font-mono);
+  font-style: normal;
+}
+.chip.w {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.chip.d {
+  background: var(--surface-2);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+}
+.chip.l {
+  background: #ef4444;
+  color: #0f172a;
+}
+.insight-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+#insights h4 {
+  margin: var(--space-2) 0;
+  font-size: 15px;
+}
+.games {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.games li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px 0;
+}
+.league-more {
+  width: 100%;
+  margin-top: var(--space-2);
+  text-align: left;
+}
+
 /* ---------- Standings ---------- */
 .standings {
   margin-bottom: var(--space-4);
@@ -1135,6 +1189,14 @@ progress::-moz-progress-bar {
 }
 
 @media (max-width: 700px) {
+  .insight-grid {
+    grid-template-columns: 1fr;
+  }
+  .league-more {
+    flex: none;
+    width: auto;
+    white-space: nowrap;
+  }
   .standings .opt {
     display: none;
   }

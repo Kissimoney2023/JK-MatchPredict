@@ -33,6 +33,7 @@ export function showAnalysis(f) {
     `<p class="muted">${esc(a.disclaimer)}</p>` +
     `<h3>Make a virtual pick</h3><div class="pick-buttons">${[0, 1, 2].map(pickButton(f)).join('')}</div>` +
     `<div id="save-message" role="status">${demoNote}</div>` +
+    '<div id="insights"></div>' +
     sourceBlock(f);
   if (!$('#analysis').open) $('#analysis').showModal();
 }

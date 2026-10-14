@@ -191,3 +191,30 @@ test('a warmed cache lets the forecast rate teams using the whole fixture list',
   // Eight fixture teams plus the shared opponent (id 99) are rated together.
   assert.equal(forecast.teamsRated, 9);
 });
+
+test('fixture cards get team form only once histories are cached; insights adds detail', async () => {
+  const {service, advance} = setup();
+
+  const cold = await service.fixtures(upcoming());
+  assert.equal(cold.fixtures[0].form, undefined, 'no cached history yet, so no form');
+
+  await service.prefetch({maxFetches: 6});
+  advance(61_000);
+  await service.prefetch({maxFetches: 6});
+  advance(61_000);
+
+  const warm = await service.fixtures(upcoming());
+  assert.deepEqual(warm.fixtures[0].form.home, ['W', 'W', 'W', 'W', 'W']);
+  assert.equal(
+    warm.fixtures.every((f) => f.form.home && f.form.away),
+    true,
+  );
+
+  const detail = await service.insights('fd:100', warm.listingId);
+  assert.equal(detail.home.games.length, 5);
+  assert.deepEqual(detail.home.record, {w: 5, d: 0, l: 0});
+  assert.equal(detail.away.games.length, 5);
+  assert.deepEqual(detail.headToHead.matches, []);
+
+  await assert.rejects(() => service.insights('fd:999', warm.listingId), /browser/);
+});

@@ -5,6 +5,7 @@ import {createFixtures} from './service/fixtures.mjs';
 import {createLookup} from './service/lookup.mjs';
 import {createHistory} from './service/history.mjs';
 import {createStandings} from './service/standings.mjs';
+import {createInsights} from './service/insights.mjs';
 import {createForecast} from './service/forecast.mjs';
 import {createPicks} from './service/picks.mjs';
 import {createPrefetch} from './service/prefetch.mjs';
@@ -21,6 +22,12 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
   const lookup = createLookup({env, provider});
   const history = createHistory({provider, now});
   const {standings} = createStandings({env, provider, league});
+  const {withForm, insights} = createInsights({env, now, storage, history, lookup});
+  // Fixture lists include each team's recent form when its history is already cached.
+  const fixturesWithForm = async (params) => {
+    const result = await fixtures(params);
+    return {...result, fixtures: await withForm(result.fixtures)};
+  };
   const {forecast} = createForecast({env, store, now, storage, provider, lookup, history});
   const {picks, save, settlePicks} = createPicks({now, storage, lookup});
   const prefetch = createPrefetch({
@@ -45,7 +52,8 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
   return {
     status,
     catalog,
-    fixtures,
+    fixtures: fixturesWithForm,
+    insights,
     standings,
     forecast,
     picks,

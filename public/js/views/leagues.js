@@ -10,12 +10,26 @@ const leagueButton = (l) =>
 
 export function renderLeagues() {
   const query = $('#league-search').value.toLowerCase();
-  const leagues = state.leagues.filter((l) =>
+  const matching = state.leagues.filter((l) =>
     (l.name + ' ' + l.country).toLowerCase().includes(query),
   );
+  // By default show featured competitions (and the selected one); searching looks at all.
+  const collapsed = !query && !state.showAllLeagues;
+  const leagues = collapsed
+    ? matching.filter((l) => l.featured || l.key === state.league)
+    : matching;
+  const hidden = matching.length - leagues.length;
+  const toggle =
+    hidden > 0 || (!query && state.showAllLeagues && state.leagues.some((l) => !l.featured))
+      ? '<button class="text-button league-more" data-leagues-toggle>' +
+        (state.showAllLeagues
+          ? 'Show fewer competitions'
+          : 'Show all competitions (' + hidden + ' more)') +
+        '</button>'
+      : '';
   $('#league-count').textContent = state.leagues.length;
   $('#leagues').innerHTML =
-    ALL_LEAGUES_BUTTON(state.league === 'all') + leagues.map(leagueButton).join('');
+    ALL_LEAGUES_BUTTON(state.league === 'all') + leagues.map(leagueButton).join('') + toggle;
 
   const selected = state.leagues.find((x) => x.key === state.league);
   $('#competition-title').textContent = selected?.name || 'All available leagues';

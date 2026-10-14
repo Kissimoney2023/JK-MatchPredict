@@ -67,6 +67,12 @@ npm run build
 
 The build copies public assets and fonts into `dist` and verifies that the function bundles with esbuild. Automated tests use mocked football responses and a conditional-write storage adapter; they do not prove paid/free plan coverage or real API accuracy.
 
+## Competitions, team form and head-to-head
+
+- The competitions list shows major competitions first (Champions League, Europa and Conference League, the top domestic leagues). Round, qualifier, play-off and friendly style entries are marked `minor` and hidden behind "Show all competitions"; searching always looks at everything. The lists are in `server/service/catalog.mjs`.
+- Match cards show each team's last five results as W/D/L chips (oldest to newest). Form appears only when the team's history is already cached (the scheduled prefetch fills it), so listing matches never costs extra provider requests.
+- The forecast dialog loads "Form & head-to-head": the last five results per team with venue, opponent and score, plus meetings between the two teams in the last 12 months (the history window; older meetings are not shown). Results decided in extra time are skipped because only regulation-time scores are used. `GET /api/football?action=insights&key=…&listing=…` serves it and may fetch the two team histories if they are not cached yet.
+
 ## Scheduled prefetch (fewer rate-limit failures)
 
 Free provider plans allow only a handful of requests per minute, and one forecast can need several. `/api/prefetch` warms the caches ahead of time: the upcoming fixtures of the configured competitions (next 30 days), their standings, and the recent match history of every team playing. Afterwards a forecast needs only one live request.
@@ -127,6 +133,7 @@ Cache and quota updates use Redis with atomic compare-and-set writes. Cache, quo
   - `storage.mjs` (store reads, atomic updates, budgets), `provider.mjs` (cached, rate-limited provider client), `normalize.mjs` (fixture shapes and league mapping),
   - `catalog.mjs`, `fixtures.mjs`, `lookup.mjs` (single-match and cross-provider verification), `forecast.mjs` and `picks.mjs`.
 - `server/service/prefetch.mjs` (budgeted cache warm-up), `history.mjs` (team match history) and `standings.mjs`; `api/prefetch.mjs` is the endpoint.
+- `server/form.mjs` (recent form and head-to-head from raw histories) and `server/service/insights.mjs`.
 - `server/model.mjs`: normalization and experimental goal model.
 - `server/analysis.mjs`: outcome summaries and probability-based tips. Shared with the browser; `npm run build` publishes it as `/analysis.js`.
 - `server/errors.mjs`, `server/util.mjs`: `AppError`, hashing, date and time helpers.

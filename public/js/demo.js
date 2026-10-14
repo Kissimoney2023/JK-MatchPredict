@@ -1,7 +1,7 @@
 export const demoLeagues = [
-  {key: 'ap:2', name: 'Champions League', country: 'Europe', fdCode: 'CL'},
-  {key: 'ap:39', name: 'Premier League', country: 'England'},
-  {key: 'ap:140', name: 'La Liga', country: 'Spain'},
+  {key: 'ap:2', name: 'Champions League', country: 'Europe', fdCode: 'CL', featured: true},
+  {key: 'ap:39', name: 'Premier League', country: 'England', featured: true},
+  {key: 'ap:140', name: 'La Liga', country: 'Spain', featured: true},
 ];
 
 const SAMPLE_MATCHES = [

@@ -36,6 +36,13 @@ export function makeHandler(deps) {
         if (action === 'status') return json(service.status());
         if (action === 'leagues') return json(await service.catalog());
         if (action === 'fixtures') return json(await service.fixtures(url.searchParams));
+        if (action === 'insights')
+          return json(
+            await service.insights(
+              url.searchParams.get('key') || '',
+              url.searchParams.get('listing') || '',
+            ),
+          );
         if (action === 'standings')
           return json(await service.standings(url.searchParams.get('league') || ''));
         if (action === 'forecast')

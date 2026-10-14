@@ -9,6 +9,7 @@ import {renderLeagues} from './views/leagues.js';
 import {renderMatches} from './views/matches.js';
 import {exportPicks, loadPicks} from './views/picks.js';
 import {loadStandings} from './views/standings.js';
+import {loadInsights} from './views/insights.js';
 
 // ---- Data loading ---------------------------------------------------------
 
@@ -111,6 +112,7 @@ const analyzeMatch = (key) =>
       ? state.fixtures.find((f) => f.key === key)
       : await api('forecast', {key, listing: state.listing});
     showAnalysis(forecast);
+    loadInsights(forecast.key); // optional extra; does not block or fail the forecast
   });
 
 const savePick = (outcome) =>
@@ -154,6 +156,10 @@ function onButtonClick(e) {
     state.status = b.dataset.status;
     state.page = 1;
     renderMatches();
+  }
+  if (b.hasAttribute('data-leagues-toggle')) {
+    state.showAllLeagues = !state.showAllLeagues;
+    renderLeagues();
   }
   if (b.dataset.analyze) analyzeMatch(b.dataset.analyze);
   if (b.hasAttribute('data-save')) savePick(Number(b.dataset.save));

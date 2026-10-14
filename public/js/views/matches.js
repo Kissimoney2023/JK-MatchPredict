@@ -1,5 +1,6 @@
 import {$, $$, esc, formatDate} from '../dom.js';
 import {state, PAGE_SIZE, isLive, isFinished, isOpen} from '../state.js';
+import {formChips} from './insights.js';
 
 function scoreText(f) {
   return Number.isInteger(f.score?.home) && Number.isInteger(f.score?.away)
@@ -12,14 +13,14 @@ function closedLabel(f) {
   return f.status === 'TBD' ? 'Kickoff unconfirmed' : 'Pre-match picks closed';
 }
 
-const team = (name) =>
-  `<div class="team"><span class="crest">${esc(name.slice(0, 3).toUpperCase())}</span>${esc(name)}</div>`;
+const team = (name, form) =>
+  `<div class="team"><span class="crest">${esc(name.slice(0, 3).toUpperCase())}</span>${esc(name)}${formChips(form)}</div>`;
 
 function matchCard(f) {
   const action = isOpen(f)
     ? `<button class="text-button" data-analyze="${esc(f.key)}" ${state.busy ? 'disabled' : ''}>Predict &amp; view tips</button>`
     : `<small>${closedLabel(f)}</small>`;
-  return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${f.demo ? 'SAMPLE' : esc(f.status)}</span></div><div class="teams">${team(f.home)}<span class="vs">${esc(scoreText(f))}</span>${team(f.away)}</div><div class="match-bottom"><small>${esc(formatDate(f.kickoff))}<br>Your local time</small>${action}</div></article>`;
+  return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${f.demo ? 'SAMPLE' : esc(f.status)}</span></div><div class="teams">${team(f.home, f.form?.home)}<span class="vs">${esc(scoreText(f))}</span>${team(f.away, f.form?.away)}</div><div class="match-bottom"><small>${esc(formatDate(f.kickoff))}<br>Your local time</small>${action}</div></article>`;
 }
 
 function matchesInView() {

@@ -2,6 +2,39 @@ import {AppError} from '../errors.mjs';
 import {DAY} from '../util.mjs';
 import {LEAGUE_MAPPING} from './normalize.mjs';
 
+// Competitions shown first, in this order (API-Football ids / football-data.org codes).
+const FEATURED_AP = [2, 3, 848, 39, 140, 78, 135, 61, 94, 88, 40, 71, 1, 4];
+const FEATURED_FD = ['CL', 'EC', 'PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL', 'DED', 'ELC', 'BSA', 'WC'];
+
+// Round / qualifier / play-off style entries that clutter the list ("2nd Round - Group 1").
+const MINOR_NAME =
+  /^([0-9]+(st|nd|rd|th)|first|second|third|fourth|final|semi|quarter|preliminary|qualifying|group)([^a-z]|$)|(^|[^a-z])(round|leg|play-?offs?|qualif[a-z]*|promotion|relegation|friendl[a-z]*)([^a-z]|$)/i;
+
+function featuredRank(l) {
+  const byId = FEATURED_AP.indexOf(l.apId);
+  if (byId >= 0) return byId;
+  const byCode = FEATURED_FD.indexOf(l.fdCode);
+  return byCode >= 0 ? byCode : -1;
+}
+
+/** Marks featured / minor competitions and orders: featured, regular, then minor entries. */
+export function organize(leagues) {
+  const marked = leagues.map((l) => {
+    const rank = featuredRank(l);
+    return {...l, featured: rank >= 0, minor: rank < 0 && MINOR_NAME.test(l.name), rank};
+  });
+  const tier = (l) => (l.featured ? 0 : l.minor ? 2 : 1);
+  return marked
+    .sort(
+      (a, b) =>
+        tier(a) - tier(b) ||
+        (a.featured ? a.rank - b.rank : 0) ||
+        a.country.localeCompare(b.country) ||
+        a.name.localeCompare(b.name),
+    )
+    .map(({rank, ...l}) => l);
+}
+
 export function createCatalog({env, provider}) {
   async function catalog() {
     const items = new Map();
@@ -56,10 +89,7 @@ export function createCatalog({env, provider}) {
       }
     }
 
-    const leagues = [...items.values()].sort(
-      (a, b) => a.country.localeCompare(b.country) || a.name.localeCompare(b.name),
-    );
-    return {leagues, warnings};
+    return {leagues: organize([...items.values()]), warnings};
   }
 
   /** Resolves a league key, or `null` for "all leagues". */

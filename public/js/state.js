@@ -10,6 +10,7 @@ export const state = {
   busy: false,
   connected: false,
   providers: [],
+  showAllLeagues: false,
   storage: '',
   source: '',
   at: null,
