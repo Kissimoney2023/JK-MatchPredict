@@ -1,11 +1,9 @@
 import {AppError} from '../errors.mjs';
-import {hash, iso, DAY, HOUR} from '../util.mjs';
+import {hash, HOUR} from '../util.mjs';
 import {probabilities, isOpen, sameMatch, goalModel} from '../model.mjs';
 import {analyze} from '../analysis.mjs';
 
-const HISTORY_TTL = 6 * HOUR;
-
-export function createForecast({env, store, now, storage, provider, lookup}) {
+export function createForecast({env, store, now, storage, provider, lookup, history}) {
   const {read} = storage;
   const {mappedFD, fresh} = lookup;
 
@@ -14,14 +12,6 @@ export function createForecast({env, store, now, storage, provider, lookup}) {
     const {f: target} = await mappedFD(f);
     if (!isOpen(target, now()) || !sameMatch(target, f))
       throw new AppError(409, 'closed', 'Match is no longer open at the same kickoff time.');
-    const from = iso(now() - 365 * DAY);
-    const to = iso(now());
-    const history = (teamId) =>
-      provider(
-        'fd',
-        `teams/${teamId}/matches?status=FINISHED&dateFrom=${from}&dateTo=${to}&limit=100`,
-        HISTORY_TTL,
-      );
     const h = await history(target.homeTeamId);
     const a = await history(target.awayTeamId);
     const m = goalModel(

@@ -19,12 +19,12 @@ for (const [pkg, file] of FONTS)
 
 // 2. Verify the Vercel function bundles (Vercel bundles it again at deploy time).
 await build({
-  entryPoints: ['api/football.mjs'],
+  entryPoints: ['api/football.mjs', 'api/prefetch.mjs'],
   bundle: true,
   platform: 'node',
   format: 'esm',
   target: 'node22',
-  outfile: '.vercel-verification/football.mjs',
+  outdir: '.vercel-verification',
   packages: 'external',
 });
 

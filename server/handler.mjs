@@ -1,4 +1,4 @@
-import {randomBytes} from 'node:crypto';
+import {randomBytes, timingSafeEqual} from 'node:crypto';
 import {createService, AppError, hash} from './service.mjs';
 import {createStore} from './store/index.mjs';
 
@@ -36,6 +36,8 @@ export function makeHandler(deps) {
         if (action === 'status') return json(service.status());
         if (action === 'leagues') return json(await service.catalog());
         if (action === 'fixtures') return json(await service.fixtures(url.searchParams));
+        if (action === 'standings')
+          return json(await service.standings(url.searchParams.get('league') || ''));
         if (action === 'forecast')
           return json(
             await service.forecast(
@@ -80,8 +82,41 @@ export function makeHandler(deps) {
   };
 }
 
+/** Constant-time string comparison for secrets. */
+function safeEqual(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
+/**
+ * Handler for the scheduled cache warm-up. Requires `Authorization: Bearer <CRON_SECRET>`
+ * (Vercel Cron sends this automatically when the CRON_SECRET env var is set).
+ */
+export function makePrefetchHandler(deps, env) {
+  const respond = (body, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: {'Content-Type': 'application/json', 'Cache-Control': 'no-store'},
+    });
+  return async (request) => {
+    if (!env.CRON_SECRET) return respond({error: 'CRON_SECRET is not configured.'}, 503);
+    const auth = request.headers.get('authorization') || '';
+    if (!safeEqual(auth, 'Bearer ' + env.CRON_SECRET))
+      return respond({error: 'Unauthorized.'}, 401);
+    try {
+      return respond(await deps().prefetch());
+    } catch (e) {
+      console.error('prefetch failed', e);
+      return respond({error: 'Prefetch failed.'}, 500);
+    }
+  };
+}
+
 let service;
-/** Production handler: environment-driven providers and storage, created once per instance. */
-export const handler = makeHandler(
-  () => (service ??= createService({env: process.env, store: createStore(process.env)})),
-);
+const getService = () =>
+  (service ??= createService({env: process.env, store: createStore(process.env)}));
+
+/** Production handlers: environment-driven providers and storage, created once per instance. */
+export const handler = makeHandler(getService);
+export const prefetchHandler = makePrefetchHandler(getService, process.env);

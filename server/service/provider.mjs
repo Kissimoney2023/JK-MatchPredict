@@ -1,5 +1,5 @@
 import {AppError} from '../errors.mjs';
-import {hash, MINUTE, DAY} from '../util.mjs';
+import {hash, MINUTE, HOUR, DAY} from '../util.mjs';
 
 const PROVIDERS = {
   ap: {
@@ -17,7 +17,9 @@ const PROVIDERS = {
 };
 const PER_MINUTE_LIMIT = 9;
 const COOLDOWN_MS = MINUTE;
-const PLAN_BLOCK_MS = 6 * 3_600_000;
+const PLAN_BLOCK_MS = 6 * HOUR;
+/** How long past its expiry a cached response may still be served if a refresh fails. */
+const STALE_MS = DAY;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 /** Short single-line text for error messages (provider replies never contain our keys). */
@@ -27,19 +29,19 @@ const brief = (v) =>
 /**
  * Returns `provider(kind, path, ttl)`: a cached, de-duplicated, budgeted and
  * cooldown-protected GET against API-Football (`ap`) or football-data.org (`fd`).
+ *
+ * - Fresh cache hits are returned with `fromCache: true` and cost nothing.
+ * - If a refresh fails (rate limit, outage, cooldown) but an older copy exists within
+ *   STALE_MS, that copy is returned with `stale: true` instead of an error.
+ * - `provider.stats.fetches` counts real upstream requests (used to budget prefetching).
  */
 export function createProviderClient({env, store, fetcher, now, storage}) {
   const {read, budget} = storage;
   const pending = new Map();
+  const stats = {fetches: 0};
 
-  return async function provider(kind, path, ttl) {
+  async function load(kind, path, ttl, cacheKey) {
     const {name, baseUrl, keyEnv, headers} = PROVIDERS[kind];
-    const key = env[keyEnv];
-    if (!key) throw new AppError(503, 'not_configured', `${name} key is not configured.`);
-
-    const cacheKey = 'cache/' + hash(kind + ':' + path);
-    const cached = await read(cacheKey);
-    if (cached && cached.until > now()) return cached;
 
     // A plan/season restriction will not fix itself soon: do not spend quota retrying it.
     const blockKey = 'planblock/' + hash(kind + ':' + path);
@@ -65,8 +67,9 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
           const daily = Math.max(1, Math.min(150000, Number(env.API_FOOTBALL_DAILY_LIMIT) || 100));
           await budget('ap-day', daily, DAY);
         }
+        stats.fetches++;
         const response = await fetcher(baseUrl + path, {
-          headers: headers(key),
+          headers: headers(env[keyEnv]),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         if (!response.ok) {
@@ -127,5 +130,25 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
     })();
     pending.set(cacheKey, task);
     return task;
-  };
+  }
+
+  async function provider(kind, path, ttl) {
+    const {name, keyEnv} = PROVIDERS[kind];
+    if (!env[keyEnv]) throw new AppError(503, 'not_configured', `${name} key is not configured.`);
+
+    const cacheKey = 'cache/' + hash(kind + ':' + path);
+    const cached = await read(cacheKey);
+    if (cached && cached.until > now()) return {...cached, fromCache: true};
+
+    try {
+      return await load(kind, path, ttl, cacheKey);
+    } catch (e) {
+      const usable = cached && now() - cached.until < STALE_MS;
+      if (usable && e.code !== 'plan') return {...cached, stale: true};
+      throw e;
+    }
+  }
+
+  provider.stats = stats;
+  return provider;
 }

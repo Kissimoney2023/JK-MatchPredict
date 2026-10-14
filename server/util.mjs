@@ -24,3 +24,6 @@ export function dates(params) {
     throw new AppError(400, 'date_range', 'Choose a valid date range of up to 31 days.');
   return {from, to};
 }
+
+/** UTC date (YYYY-MM-DD) `offsetDays` after the instant `at` (default: now). */
+export const todayIso = (offsetDays = 0, at = Date.now()) => iso(at + offsetDays * DAY);

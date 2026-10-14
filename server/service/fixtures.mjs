@@ -2,7 +2,10 @@ import {AppError} from '../errors.mjs';
 import {dates, hash, iso, DAY} from '../util.mjs';
 import {normAP, normFD} from './normalize.mjs';
 
-const FIXTURES_TTL = 300_000;
+const FIXTURES_TTL = 30 * 60_000;
+
+const staleNote = (at) =>
+  `Showing saved data from ${new Date(at).toISOString().slice(0, 16).replace('T', ' ')} UTC; the provider is temporarily unavailable.`;
 
 export function createFixtures({env, store, provider, league}) {
   async function fixtureResult(items, data, source, warnings) {
@@ -31,6 +34,7 @@ export function createFixtures({env, store, provider, league}) {
           : `fixtures?date=${from}`;
         const data = await provider('ap', path, FIXTURES_TTL);
         const items = (data.body.response ?? []).map(normAP).filter(Boolean);
+        if (data.stale) errors.push(staleNote(data.at));
         if (items.length || !env.FOOTBALL_DATA_ORG_KEY)
           return await fixtureResult(items, data, 'API-Football', errors);
       } catch (e) {
@@ -53,6 +57,7 @@ export function createFixtures({env, store, provider, league}) {
             Date.parse(f.kickoff) >= Date.parse(from) &&
             Date.parse(f.kickoff) < Date.parse(to) + DAY,
         );
+      if (data.stale) errors.push(staleNote(data.at));
       errors.push(
         'Fallback data may be delayed. Forecasts use an experimental model, subject to sufficient match history.',
       );

@@ -679,6 +679,70 @@ label input {
   margin-top: var(--space-5);
 }
 
+/* ---------- Standings ---------- */
+.standings {
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.standings summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch);
+  padding: 0 var(--space-4);
+  cursor: pointer;
+  font-weight: 600;
+}
+.standings summary:hover {
+  color: var(--accent);
+}
+.standings[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+#standings-body {
+  padding: var(--space-4);
+}
+#standings-body h4 {
+  margin: var(--space-4) 0 var(--space-2);
+}
+.table-scroll {
+  max-height: 420px;
+  overflow: auto;
+}
+.standings table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.standings th,
+.standings td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.standings thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.standings .num {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+.standings .team-name {
+  width: 100%;
+  font-weight: 500;
+}
+.standings .pts {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ---------- Prose ---------- */
 .prose {
   max-width: 850px;
@@ -1067,6 +1131,12 @@ progress::-moz-progress-bar {
   }
   footer {
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 700px) {
+  .standings .opt {
+    display: none;
   }
 }
 

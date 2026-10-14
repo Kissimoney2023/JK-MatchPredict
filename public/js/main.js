@@ -8,6 +8,7 @@ import {renderConnection} from './views/connection.js';
 import {renderLeagues} from './views/leagues.js';
 import {renderMatches} from './views/matches.js';
 import {exportPicks, loadPicks} from './views/picks.js';
+import {loadStandings} from './views/standings.js';
 
 // ---- Data loading ---------------------------------------------------------
 
@@ -182,6 +183,9 @@ $('#more').onclick = () => {
   renderMatches();
 };
 $('#close-analysis').onclick = () => $('#analysis').close();
+$('#standings-box').addEventListener('toggle', (e) => {
+  if (e.target.open) loadStandings();
+});
 $('#settle').onclick = settlePicks;
 $('#export').onclick = exportPicks;
 document.addEventListener('click', onButtonClick);
