@@ -67,7 +67,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
         })
       : null;
   const pickStore = createPickStore({storage, supabase});
-  const {picks, save, settlePicks, deletePick, mergePicks} = createPicks({
+  const {picks, save, settlePicks, settleDue, deletePick, mergePicks} = createPicks({
     now,
     storage,
     lookup,
@@ -75,7 +75,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
   });
   const shares = createShares({supabase, pickStore, storage, now});
   const accounts = createAccounts({env, supabase, storage, now, mergePicks});
-  const reminders = createReminders({env, now, storage, pickStore, send: sendPush});
+  const reminders = createReminders({env, now, storage, pickStore, settleDue, send: sendPush});
   const prefetch = createPrefetch({
     env,
     now,

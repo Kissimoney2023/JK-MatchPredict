@@ -6,6 +6,11 @@ const MAX_SUBSCRIPTIONS = 2000;
 const MAX_PER_PROFILE = 5;
 const MAX_SENDS_PER_RUN = 200;
 const NOTIFIED_KEPT = 100;
+const SETTLE_AFTER_MS = 105 * 60_000; // matches are rarely over sooner than this
+const SETTLE_WINDOW_MS = 8 * 3_600_000; // after that, people can use "Check results"
+const RECHECK_MS = 30 * 60_000;
+const MAX_SETTLE_LOOKUPS_PER_RUN = 6; // protects the football data quotas
+const CHECKED_KEPT = 50;
 const OUTCOMES = ['home win', 'draw', 'away win'];
 
 // The browser vendors' push services. The server posts to whatever address a subscription
@@ -75,12 +80,42 @@ export function buildPayload(due, now) {
   };
 }
 
+/** What to tell someone whose picks were just settled. */
+export function buildResultPayload(settled) {
+  const words = {correct: 'was correct', incorrect: 'was not correct', void: 'is void'};
+  if (settled.length === 1) {
+    const {pick, result, score} = settled[0];
+    const f = pick.forecast;
+    const match = score ? `${f.home} ${score} ${f.away}` : `${f.home} vs ${f.away}`;
+    return {
+      title: 'Match result',
+      body: `${match}. Your pick ${words[result] ?? 'was settled'}.`,
+      tag: 'result-' + pick.id,
+      url: '/',
+    };
+  }
+  const count = (r) => settled.filter((s) => s.result === r).length;
+  const parts = [
+    [count('correct'), 'correct'],
+    [count('incorrect'), 'not correct'],
+    [count('void'), 'void'],
+  ]
+    .filter(([n]) => n)
+    .map(([n, label]) => `${n} ${label}`);
+  return {
+    title: 'Match results',
+    body: `${settled.length} of your picks were settled: ${parts.join(', ')}.`,
+    tag: 'result-group',
+    url: '/',
+  };
+}
+
 /**
  * Kickoff reminders through browser push notifications. A browser subscribes (with its
  * permission); the scheduled job then tells each subscriber about picks that are about to start.
  * Only virtual picks the person already made are mentioned.
  */
-export function createReminders({env, now, storage, pickStore, send}) {
+export function createReminders({env, now, storage, pickStore, settleDue, send}) {
   const {read, atomic} = storage;
   const sendPush = send ?? defaultSender(env);
   const enabled = () => !!(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY);
@@ -156,17 +191,45 @@ export function createReminders({env, now, storage, pickStore, send}) {
 
   /** One pass of the scheduled job: sends a reminder to every subscriber with a match starting soon. */
   async function run() {
-    const summary = {enabled: enabled(), subscribers: 0, sent: 0, removed: 0, errors: 0};
+    const summary = {
+      enabled: enabled(),
+      subscribers: 0,
+      sent: 0,
+      settled: 0,
+      removed: 0,
+      errors: 0,
+    };
+    let lookups = 0;
     if (!enabled()) return summary;
     const index = (await read('push/index'))?.subs ?? [];
     summary.subscribers = index.length;
     const t = now();
 
+    /** Sends one notification. Returns false when the browser has gone away (it is forgotten). */
+    async function deliver(subscription, payload) {
+      try {
+        await sendPush({endpoint: subscription.endpoint, keys: subscription.keys}, payload);
+        summary.sent++;
+        return true;
+      } catch (e) {
+        if (e?.statusCode === 404 || e?.statusCode === 410) {
+          await forget(subscription.endpoint); // the browser unsubscribed or expired
+          summary.removed++;
+        } else {
+          summary.errors++;
+          console.error('reminder send failed', e?.statusCode ?? '', e?.message ?? e);
+        }
+        return false;
+      }
+    }
+
     for (const {h, sid} of index) {
       if (summary.sent >= MAX_SENDS_PER_RUN) break;
       try {
-        const subscription = await findSubscription(h, sid);
+        let subscription = await findSubscription(h, sid);
         if (!subscription) continue;
+
+        // 1. Kickoff reminders.
         const picks = await pickStore.list(subscription.sid);
         const done = new Set(subscription.notified);
         const due = picks
@@ -180,30 +243,48 @@ export function createReminders({env, now, storage, pickStore, send}) {
               !done.has(d.pick.id),
           )
           .sort((a, b) => a.kickoff - b.kickoff);
-        if (!due.length) continue;
-
-        try {
-          await sendPush(
-            {endpoint: subscription.endpoint, keys: subscription.keys},
-            buildPayload(due, t),
+        if (due.length) {
+          if (!(await deliver(subscription, buildPayload(due, t)))) continue;
+          const ids = due.map((d) => d.pick.id);
+          await atomic(subKey(subscription.endpoint), (old) =>
+            old?.endpoint
+              ? {...old, notified: [...old.notified, ...ids].slice(-NOTIFIED_KEPT)}
+              : undefined,
           );
-        } catch (e) {
-          if (e?.statusCode === 404 || e?.statusCode === 410) {
-            await forget(subscription.endpoint); // the browser unsubscribed or expired
-            summary.removed++;
-          } else {
-            summary.errors++;
-            console.error('reminder send failed', e?.statusCode ?? '', e?.message ?? e);
-          }
-          continue;
         }
-        summary.sent++;
-        const ids = due.map((d) => d.pick.id);
-        await atomic(subKey(subscription.endpoint), (old) =>
-          old?.endpoint
-            ? {...old, notified: [...old.notified, ...ids].slice(-NOTIFIED_KEPT)}
-            : undefined,
-        );
+
+        // 2. Results: settle finished matches and tell the person.
+        if (!settleDue || lookups >= MAX_SETTLE_LOOKUPS_PER_RUN) continue;
+        const recent = (p) => {
+          const kickoff = Date.parse(p.forecast?.kickoff);
+          return Number.isFinite(kickoff) && kickoff > t - SETTLE_WINDOW_MS;
+        };
+        const checked = subscription.checked ?? {};
+        const outcome = await settleDue(subscription.sid, {
+          limit: MAX_SETTLE_LOOKUPS_PER_RUN - lookups,
+          skip: (p) => !recent(p) || (checked[p.id] ?? 0) > t - RECHECK_MS,
+        });
+        lookups += outcome.attempted.length;
+        if (outcome.attempted.length) {
+          const stamps = Object.fromEntries(outcome.attempted.map((p) => [p.id, t]));
+          subscription =
+            (await atomic(subKey(subscription.endpoint), (old) =>
+              old?.endpoint
+                ? {
+                    ...old,
+                    checked: Object.fromEntries(
+                      Object.entries({...(old.checked ?? {}), ...stamps})
+                        .sort((a, b) => a[1] - b[1])
+                        .slice(-CHECKED_KEPT),
+                    ),
+                  }
+                : undefined,
+            )) ?? subscription;
+        }
+        if (outcome.settledPicks.length) {
+          summary.settled += outcome.settledPicks.length;
+          await deliver(subscription, buildResultPayload(outcome.settledPicks));
+        }
       } catch (e) {
         summary.errors++;
         console.error('reminder run failed for one subscriber', e?.message ?? e);

@@ -265,3 +265,127 @@ test('the app handler subscribes and unsubscribes; the cron handler runs reminde
   const gone = await call({action: 'push-unsubscribe', endpoint: sub.endpoint});
   assert.deepEqual(await gone.json(), {subscribed: false});
 });
+
+// ---------- result notifications ----------
+
+/** A service whose provider reports every API-Football fixture as in the given state. */
+function setupWithResults() {
+  const match = {status: 'NS', home: null, away: null, lookups: 0};
+  const fetcher = async (url) => {
+    const u = new URL(url);
+    if (!u.searchParams.has('id')) return Response.json({response: [], errors: []});
+    match.lookups++;
+    const id = Number(u.searchParams.get('id'));
+    const done = match.status === 'FT';
+    return Response.json({
+      response: [
+        {
+          fixture: {
+            id,
+            date: new Date(base - 130 * MIN).toISOString(),
+            status: {short: match.status},
+          },
+          league: {id: 39, name: 'Premier League', season: 2026},
+          teams: {home: {name: 'Arsenal'}, away: {name: 'Chelsea'}},
+          goals: {home: done ? 2 : null, away: done ? 1 : null},
+          score: {fulltime: {home: done ? 2 : null, away: done ? 1 : null}},
+        },
+      ],
+      errors: [],
+      paging: {total: 1},
+    });
+  };
+  let clock = base;
+  const sent = [];
+  const store = createMemoryStore();
+  const service = createService({
+    env: {...VAPID, API_FOOTBALL_KEY: 'ap-test'},
+    store,
+    fetcher,
+    now: () => clock,
+    sendPush: async (sub, payload) => sent.push({sub, payload}),
+  });
+  return {service, store, sent, match, advance: (ms) => (clock += ms)};
+}
+
+/** A pick on API-Football fixture `id` that kicked off `minutesAgo` minutes ago. */
+const finishedPick = (id, minutesAgo, outcome = 0) => ({
+  ...pick('match-' + id, {minutes: -minutesAgo, outcome}),
+  forecast: {
+    ...pick('x').forecast,
+    key: 'ap:' + id,
+    provider: 'ap',
+    kickoff: new Date(base - minutesAgo * MIN).toISOString(),
+  },
+});
+
+test('a finished match is settled by the scheduled job and the person is told', async () => {
+  const x = setupWithResults();
+  await x.store.setJSON('picks/' + SID, {items: [finishedPick(100, 130)]});
+  await x.service.reminders.subscribe(SID, subscription());
+
+  x.match.status = 'FT';
+  x.advance(2 * MIN); // the provider caches a lookup for a minute
+  const summary = await x.service.reminders.run();
+  assert.equal(summary.settled, 1);
+  assert.equal(x.sent.length, 1);
+  assert.equal(x.sent[0].payload.title, 'Match result');
+  assert.match(x.sent[0].payload.body, /Arsenal 2–1 Chelsea\. Your pick was correct\./);
+  assert.equal((await x.service.picks(SID))[0].result, 'correct');
+
+  assert.equal((await x.service.reminders.run()).settled, 0, 'only told once');
+  assert.equal(x.sent.length, 1);
+});
+
+test('a wrong pick and several results are worded plainly', async () => {
+  const x = setupWithResults();
+  await x.store.setJSON('picks/' + SID, {items: [finishedPick(100, 130, 2)]});
+  await x.service.reminders.subscribe(SID, subscription());
+  x.match.status = 'FT';
+  x.advance(2 * MIN);
+  await x.service.reminders.run();
+  assert.match(x.sent[0].payload.body, /Your pick was not correct\./);
+
+  const group = setupWithResults();
+  await group.store.setJSON('picks/' + SID, {
+    items: [finishedPick(101, 130, 0), finishedPick(102, 140, 2)],
+  });
+  await group.service.reminders.subscribe(SID, subscription());
+  group.match.status = 'FT';
+  group.advance(2 * MIN);
+  await group.service.reminders.run();
+  assert.match(
+    group.sent[0].payload.body,
+    /^2 of your picks were settled: 1 correct, 1 not correct\./,
+  );
+});
+
+test('an unfinished match is checked at most every 30 minutes and never too early', async () => {
+  const x = setupWithResults();
+  await x.store.setJSON('picks/' + SID, {
+    items: [finishedPick(100, 130), finishedPick(200, 60)], // the second cannot be over yet
+  });
+  await x.service.reminders.subscribe(SID, subscription());
+
+  await x.service.reminders.run(); // still in play
+  assert.equal(x.match.lookups, 1, 'the match that cannot be over is not looked up');
+  await x.service.reminders.run();
+  assert.equal(x.match.lookups, 1, 'not re-checked within 30 minutes');
+
+  x.advance(31 * MIN);
+  x.match.status = 'FT';
+  await x.service.reminders.run();
+  assert.equal(x.match.lookups > 1, true);
+  assert.equal(x.sent.length, 1);
+});
+
+test('old unsettled picks are left to the Check results button', async () => {
+  const x = setupWithResults();
+  await x.store.setJSON('picks/' + SID, {items: [finishedPick(100, 9 * 60)]});
+  await x.service.reminders.subscribe(SID, subscription());
+  x.match.status = 'FT';
+  x.advance(2 * MIN);
+  assert.equal((await x.service.reminders.run()).settled, 0);
+  assert.equal(x.match.lookups, 0);
+  assert.equal((await x.service.settlePicks(SID)).settled, 1, 'manual settling still works');
+});

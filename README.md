@@ -13,7 +13,7 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - Forecast source, timestamps, model limitations and missing-data states.
 - Private server-stored virtual picks, frozen at save, accessible through a browser-profile cookie.
 - Installable web app (PWA) with an offline-capable shell; see Install and offline use.
-- Optional kickoff reminders as browser notifications; see Kickoff reminders.
+- Optional kickoff reminders and result alerts as browser notifications; see Kickoff reminders.
 - Result checking and JSON export. No deposits, wagers, wallets or payments.
 - Explicit demo mode with invented examples, available even before keys are configured.
 
@@ -113,9 +113,11 @@ The site is an installable progressive web app: browsers offer "Install" (Chrome
 - Never cached: `/api/*`, public share pages (`/s/*`), non-GET requests and other origins, so private data is not stored by the worker, and sign-in codes in the address are never written to the cache.
 - The cache name includes a hash of every published file; old caches are deleted when a new worker takes over.
 
-## Kickoff reminders (optional browser notifications)
+## Kickoff reminders and result alerts (optional browser notifications)
 
 On the My picks page, "Remind me before kickoff" asks the browser for permission and then sends one notification about 45 minutes before a match you picked (several matches are combined into one message). Only your own pending virtual picks are mentioned; removing a pick, settling it or kickoff passing cancels the reminder. It works in Chrome, Edge, Firefox and Android; on iPhone the site must first be added to the Home Screen.
+
+After a match, the same scheduled job looks up the result for subscribers' picks (at least 105 minutes after kickoff, for matches that started within the last 8 hours, each pick checked at most every 30 minutes, and at most 6 provider lookups per run to protect the data quotas), records it, and sends "Match result" ("Arsenal 2–1 Chelsea. Your pick was correct."; several results become one message). People who are not subscribed, and older picks, are settled with the Check results button as before.
 
 Setup (the button stays hidden until both keys exist):
 

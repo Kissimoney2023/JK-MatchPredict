@@ -41,11 +41,15 @@ export function createPicks({now, storage, lookup, pickStore}) {
     return {saved: await pickStore.add(sid, pick)};
   }
 
-  async function settlePicks(sid) {
+  /**
+   * Looks up results for pending picks that should be finished by now. `skip` can exclude picks
+   * (the scheduled job uses it to avoid re-checking too often); `limit` caps provider lookups.
+   */
+  async function settleDue(sid, {limit = SETTLE_BATCH, skip = () => false} = {}) {
     const history = await picks(sid);
     const eligible = history
-      .filter((p) => !p.result && Date.parse(p.forecast.kickoff) + SETTLE_DELAY < now())
-      .slice(0, SETTLE_BATCH);
+      .filter((p) => !p.result && Date.parse(p.forecast.kickoff) + SETTLE_DELAY < now() && !skip(p))
+      .slice(0, limit);
     const changes = new Map();
     let unavailable = 0;
     for (const p of eligible) {
@@ -58,7 +62,20 @@ export function createPicks({now, storage, lookup, pickStore}) {
       }
     }
     await pickStore.applyResults(sid, changes);
-    return {checked: eligible.length, settled: changes.size, unavailable};
+    return {
+      checked: eligible.length,
+      settled: changes.size,
+      unavailable,
+      attempted: eligible,
+      settledPicks: eligible
+        .filter((p) => changes.has(p.id))
+        .map((p) => ({pick: p, ...changes.get(p.id)})),
+    };
+  }
+
+  async function settlePicks(sid) {
+    const {checked, settled, unavailable} = await settleDue(sid);
+    return {checked, settled, unavailable};
   }
 
   /**
@@ -75,5 +92,5 @@ export function createPicks({now, storage, lookup, pickStore}) {
     return {removed: await pickStore.remove(sid, pickId)};
   }
 
-  return {picks, save, settlePicks, deletePick, mergePicks: pickStore.mergeInto};
+  return {picks, save, settlePicks, settleDue, deletePick, mergePicks: pickStore.mergeInto};
 }
