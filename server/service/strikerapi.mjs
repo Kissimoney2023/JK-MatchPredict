@@ -39,6 +39,16 @@ export function createStrikerApi({env, provider}) {
       if (!marketEnabled() || !league) return null;
       const r = await schedule(league);
       const game = findGame(r.body.games ?? [], fixture);
+      if (!game) {
+        // Diagnostic for the logs: what the schedule offered around that kickoff.
+        const kickoff = Date.parse(fixture.kickoff);
+        const near = (r.body.games ?? [])
+          .filter((g) => Math.abs(Date.parse(g.starts_at) - kickoff) <= 6 * 3_600_000)
+          .map((g) => `${g.home?.name} vs ${g.away?.name}`);
+        console.warn(
+          `[strikerapi] no schedule game matched "${fixture.home} vs ${fixture.away}" (${fixture.kickoff}); schedule near kickoff: ${near.join(' | ') || 'none'}`,
+        );
+      }
       const market = game && marketFromLine(game.line);
       if (!market) return null;
       return {...market, gameId: game.game_id, league, fetchedAt: r.at, stale: !!r.stale};

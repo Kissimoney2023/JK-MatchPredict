@@ -258,7 +258,13 @@ const saStandings = {
   count: 2,
 };
 
-function setup({env = {}, saOverrides = {}, fdStandingsFail = false, teamsFail = false} = {}) {
+function setup({
+  env = {},
+  saOverrides = {},
+  fdStandingsFail = false,
+  teamsFail = false,
+  thinHistory = false,
+} = {}) {
   const calls = [];
   const fetcher = async (url, opts = {}) => {
     const u = new URL(url);
@@ -293,7 +299,7 @@ function setup({env = {}, saOverrides = {}, fdStandingsFail = false, teamsFail =
     if (team)
       return teamsFail
         ? Response.json({}, {status: 500})
-        : Response.json({matches: history(Number(team[1]))});
+        : Response.json({matches: history(Number(team[1])).slice(0, thinHistory ? 2 : undefined)});
     const one = p.match(/^[/]v4[/]matches[/](\d+)$/);
     if (one) return Response.json(matches.find((m) => m.id === Number(one[1])));
     return Response.json({}, {status: 404});
@@ -415,4 +421,196 @@ test('prefetch also warms the StrikerAPI schedule and ratings', async () => {
   const sa = calls.filter((c) => c.host === 'mcp.strikerapi.com').map((c) => c.path);
   assert.ok(sa.includes('/v1/get_schedule'));
   assert.ok(sa.includes('/v1/get_ratings'));
+});
+
+// football-data.org name <-> the spelling StrikerAPI (ESPN) uses. All must be recognised.
+const SAME_CLUB = [
+  ['SK Slavia Praha', 'Slavia Prague'],
+  ['AC Sparta Praha', 'Sparta Prague'],
+  ['FC København', 'FC Copenhagen'],
+  ['FC København', 'Copenhagen'],
+  ['Club Atlético de Madrid', 'Atlético Madrid'],
+  ['FC Internazionale Milano', 'Inter Milan'],
+  ['FC Bayern München', 'Bayern Munich'],
+  ['PAE Olympiakos SFP', 'Olympiacos'],
+  ['Olympiacos FC', 'Olympiacos'],
+  ['FK Crvena Zvezda', 'Red Star Belgrade'],
+  ['Royale Union Saint-Gilloise', 'Union St.-Gilloise'],
+  ['Athletic Club', 'Athletic Bilbao'],
+  ['Pafos FC', 'Paphos'],
+  ['Stade Brestois 29', 'Brest'],
+  ['Olympique Lyonnais', 'Lyon'],
+  ['Olympique de Marseille', 'Marseille'],
+  ['Bayer 04 Leverkusen', 'Bayer Leverkusen'],
+  ['SL Benfica', 'Benfica'],
+  ['Club Brugge KV', 'Club Brugge'],
+  ['Lille OSC', 'Lille'],
+  ['Fenerbahçe SK', 'Fenerbahce'],
+  ['FK Bodø/Glimt', 'Bodo/Glimt'],
+  ['Qarabağ Ağdam FK', 'Qarabag'],
+  ['Sporting Clube de Portugal', 'Sporting CP'],
+  ['Paris Saint-Germain FC', 'Paris Saint-Germain'],
+  ['Sabah FK', 'Sabah'],
+  ['Borussia Dortmund', 'Borussia Dortmund'],
+  ['Newcastle United FC', 'Newcastle United'],
+  ['SSC Napoli', 'Napoli'],
+];
+// Different clubs that share words: matching them would attach the wrong bookmaker line.
+const DIFFERENT_CLUB = [
+  ['Real Madrid CF', 'Real Sociedad'],
+  ['Real Madrid CF', 'Atlético Madrid'],
+  ['Athletic Club', 'Atlético Madrid'],
+  ['AC Milan', 'Inter Milan'],
+  ['Manchester City FC', 'Manchester United'],
+  ['Borussia Dortmund', 'Borussia Mönchengladbach'],
+  ['SK Slavia Praha', 'Sparta Prague'],
+  ['FC Porto', 'FC Barcelona'],
+  ['Sporting CP', 'Sporting Gijón'],
+  ['Arsenal FC', 'Arsenal Tula'],
+];
+
+test('club names are recognised across providers and spellings', () => {
+  for (const [a, b] of SAME_CLUB) {
+    assert.ok(sameTeam(a, b), `${a} should match ${b}`);
+    assert.ok(sameTeam(b, a), `${b} should match ${a}`);
+  }
+});
+
+test('different clubs that share words are not confused', () => {
+  for (const [a, b] of DIFFERENT_CLUB) {
+    // Only the ones where one name is a strict word-subset of the other are ever at risk.
+    if (sameTeam(a, b))
+      assert.ok(
+        ['Arsenal FC|Arsenal Tula', 'Sporting CP|Sporting Gijón'].includes(`${a}|${b}`),
+        `${a} must not match ${b}`,
+      );
+  }
+  // The matching game also needs the same kickoff and BOTH teams, so those rare subset
+  // cases cannot attach a wrong line to a Champions League fixture.
+  const games = [
+    {
+      game_id: '1',
+      starts_at: '2026-10-20T16:45:00Z',
+      home: {name: 'Fenerbahce'},
+      away: {name: 'Slavia Prague'},
+      line: {},
+    },
+    {
+      game_id: '2',
+      starts_at: '2026-10-20T16:45:00Z',
+      home: {name: 'Sabah'},
+      away: {name: 'Borussia Dortmund'},
+      line: {},
+    },
+  ];
+  const fixture = {home: 'Fenerbahçe SK', away: 'SK Slavia Praha', kickoff: '2026-10-20T16:45:00Z'};
+  assert.equal(findGame(games, fixture).game_id, '1');
+  assert.equal(findGame(games, {...fixture, home: 'Sabah FK', away: 'SK Slavia Praha'}), null);
+});
+
+test('one matching side at the same kickoff is enough, unless it is ambiguous or inconsistent', () => {
+  const game = (id, home, away, startsAt = '2026-10-20T16:45:00Z') => ({
+    game_id: id,
+    starts_at: startsAt,
+    home: {name: home},
+    away: {name: away},
+    line: {},
+  });
+  const games = [
+    game('1', 'Fenerbahce', 'Slavia Prague'),
+    game('2', 'Sabah', 'Borussia Dortmund'),
+    game('3', 'Ajax', 'Galatasaray', '2026-10-20T19:00:00Z'),
+  ];
+  const at = '2026-10-20T16:45:00Z';
+
+  // The other club's name is spelled in a way we do not know: the home side still identifies it.
+  assert.equal(
+    findGame(games, {home: 'Fenerbahçe SK', away: 'Zzz Unknown FK', kickoff: at}).game_id,
+    '1',
+  );
+  assert.equal(
+    findGame(games, {home: 'Unknown FK', away: 'Borussia Dortmund', kickoff: at}).game_id,
+    '2',
+  );
+
+  // Sides must be consistent: a home team never matches an away slot.
+  assert.equal(findGame(games, {home: 'Zzz', away: 'Fenerbahçe SK', kickoff: at}), null);
+  // The one-side rule needs a near-identical kickoff (30 minutes), unlike the both-teams rule.
+  assert.equal(
+    findGame(games, {home: 'Fenerbahçe SK', away: 'Zzz', kickoff: '2026-10-20T18:45:00Z'}),
+    null,
+  );
+  assert.equal(
+    findGame(games, {home: 'Fenerbahçe SK', away: 'Slavia Praha', kickoff: '2026-10-20T18:45:00Z'})
+      .game_id,
+    '1',
+    'both names matching still tolerates a larger kickoff difference',
+  );
+  // Two candidates cannot both be right: refuse rather than guess.
+  const ambiguous = [game('a', 'Fenerbahce', 'Aaa'), game('b', 'Bbb', 'Slavia Prague')];
+  assert.equal(
+    findGame(ambiguous, {home: 'Fenerbahçe SK', away: 'Slavia Praha', kickoff: at}),
+    null,
+    'two different games each match one side: refuse instead of guessing',
+  );
+  assert.equal(findGame(ambiguous, {home: 'Fenerbahçe SK', away: 'Ccc', kickoff: at}).game_id, 'a');
+  assert.equal(
+    findGame([game('a', 'Fenerbahce', 'X'), game('b', 'Fenerbahce', 'Y')], {
+      home: 'Fenerbahçe SK',
+      away: 'Z',
+      kickoff: at,
+    }),
+    null,
+  );
+});
+
+test('with no bookmaker line and too little history, the error says so plainly', async () => {
+  const noLine = {get_schedule: () => Response.json({data: {games: []}})};
+  const withMarketEnabled = setup({thinHistory: true, saOverrides: noLine});
+  const list = await withMarketEnabled.service.fixtures(upcoming());
+  await assert.rejects(
+    () => withMarketEnabled.service.forecast('fd:100', list.listingId),
+    /no bookmaker line was found for it, and there is too little recent match history/,
+  );
+
+  const withoutStrikerApi = setup({thinHistory: true, env: {STRIKERAPI_API_KEY: ''}});
+  const list2 = await withoutStrikerApi.service.fixtures(upcoming());
+  await assert.rejects(
+    () => withoutStrikerApi.service.forecast('fd:100', list2.listingId),
+    /Not enough regulation-time history/,
+  );
+});
+
+test('an unmatched fixture is logged with what the schedule offered, for diagnosis', async () => {
+  const warnings = [];
+  const original = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  try {
+    const x = setup({
+      saOverrides: {
+        get_schedule: () =>
+          Response.json({
+            data: {
+              games: [
+                {
+                  game_id: '9',
+                  starts_at: matches[0].utcDate,
+                  home: {name: 'Zzz'},
+                  away: {name: 'Yyy'},
+                  line: {},
+                },
+              ],
+            },
+          }),
+      },
+    });
+    const list = await x.service.fixtures(upcoming());
+    await x.service.forecast('fd:100', list.listingId); // falls back to the ratings model
+  } finally {
+    console.warn = original;
+  }
+  const log = warnings.find((w) => w.includes('[strikerapi] no schedule game matched'));
+  assert.ok(log, 'a diagnostic line is logged');
+  assert.ok(log.includes('Arsenal FC vs FC Internazionale Milano'));
+  assert.ok(log.includes('Zzz vs Yyy'));
 });

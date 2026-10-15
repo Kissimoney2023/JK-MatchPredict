@@ -42,7 +42,9 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
       throw new AppError(
         404,
         'history',
-        'Not enough regulation-time history: at least five home and five away matches are required.',
+        strikerApi.marketEnabled()
+          ? 'No forecast is available for this match yet: no bookmaker line was found for it, and there is too little recent match history for these teams (at least five home and five away results are needed).'
+          : 'Not enough regulation-time history: at least five home and five away matches are required.',
       );
     return {
       ...f,

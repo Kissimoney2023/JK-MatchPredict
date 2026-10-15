@@ -69,7 +69,81 @@ export function marketFromLine(line) {
   };
 }
 
-const tokens = (name) => teamKey(name).split(' ').filter(Boolean);
+// Letters that Unicode normalisation does not decompose; mapped before names are compared.
+const TRANSLITERATE = {ø: 'o', æ: 'ae', å: 'a', ß: 'ss', đ: 'd', ł: 'l', ı: 'i', œ: 'oe'};
+
+// Local spellings versus the English ones the other provider uses.
+const WORD_ALIASES = {
+  praha: 'prague',
+  munchen: 'munich',
+  koln: 'cologne',
+  wien: 'vienna',
+  milano: 'milan',
+  lisboa: 'lisbon',
+  kobenhavn: 'copenhagen',
+  beograd: 'belgrade',
+  kyiv: 'kiev',
+  olympiakos: 'olympiacos',
+  paphos: 'pafos',
+  st: 'saint',
+  brestois: 'brest',
+  lyonnais: 'lyon',
+  crvena: 'red',
+  zvezda: 'star',
+};
+
+// Club-type words that add nothing to identity ("SK Slavia", "SL Benfica", "Lille OSC").
+const GENERIC_WORDS = new Set([
+  'fc',
+  'cf',
+  'afc',
+  'ac',
+  'sc',
+  'sk',
+  'fk',
+  'bk',
+  'sv',
+  'ss',
+  'ssc',
+  'as',
+  'us',
+  'cd',
+  'ud',
+  'sd',
+  'rc',
+  'rcd',
+  'fsv',
+  'vfb',
+  'vfl',
+  'tsg',
+  'sl',
+  'gnk',
+  'nk',
+  'kv',
+  'kaa',
+  'rsc',
+  'osc',
+  'club',
+  'stade',
+  'de',
+  'la',
+  'le',
+  'the',
+]);
+
+const transliterate = (s) =>
+  [...String(s).toLowerCase()].map((c) => TRANSLITERATE[c] ?? c).join('');
+const isNumber = (t) => [...t].every((c) => c >= '0' && c <= '9');
+
+/** The distinctive words of a team name, normalised across spellings and providers. */
+function tokens(name) {
+  const all = teamKey(transliterate(name))
+    .split(' ')
+    .filter(Boolean)
+    .map((t) => WORD_ALIASES[t] ?? t);
+  const distinctive = all.filter((t) => !GENERIC_WORDS.has(t) && !isNumber(t));
+  return distinctive.length ? distinctive : all;
+}
 
 /** True when one team name's words are all contained in the other's ("Arsenal FC" ~ "Arsenal"). */
 export function sameTeam(a, b) {
@@ -80,17 +154,33 @@ export function sameTeam(a, b) {
   return short.every((t) => long.includes(t));
 }
 
-/** The StrikerAPI schedule game that matches a fixture (same teams, kickoff within 3 hours). */
+const SAME_KICKOFF_MS = 30 * 60_000;
+
+/**
+ * The StrikerAPI schedule game that matches a fixture.
+ *  1. Both teams match and the kickoff is within 3 hours: the normal case.
+ *  2. Otherwise, one side matches (home with home, away with away) and the kickoff is within
+ *     30 minutes. A team cannot play two matches at once, so if exactly one such game exists
+ *     it is the right one even when the other club's name is spelled in an unknown way.
+ */
 export function findGame(games, fixture, toleranceMs = 3 * 3_600_000) {
   const kickoff = Date.parse(fixture.kickoff);
-  return (
-    games.find(
-      (g) =>
-        Math.abs(Date.parse(g.starts_at) - kickoff) <= toleranceMs &&
-        sameTeam(g.home?.name, fixture.home) &&
-        sameTeam(g.away?.name, fixture.away),
-    ) ?? null
+  const gap = (g) => Math.abs(Date.parse(g.starts_at) - kickoff);
+
+  const both = games.find(
+    (g) =>
+      gap(g) <= toleranceMs &&
+      sameTeam(g.home?.name, fixture.home) &&
+      sameTeam(g.away?.name, fixture.away),
   );
+  if (both) return both;
+
+  const oneSide = games.filter(
+    (g) =>
+      gap(g) <= SAME_KICKOFF_MS &&
+      (sameTeam(g.home?.name, fixture.home) || sameTeam(g.away?.name, fixture.away)),
+  );
+  return oneSide.length === 1 ? oneSide[0] : null;
 }
 
 /** Elo expected score (win = 1, draw = 0.5) for the home side; StrikerAPI uses +60 for home. */
