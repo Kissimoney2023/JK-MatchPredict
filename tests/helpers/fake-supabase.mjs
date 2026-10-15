@@ -8,6 +8,7 @@ const PRIMARY_KEYS = {
   profiles: ['id'],
   sessions: ['token_hash'],
   picks: ['user_id', 'canonical'],
+  shares: ['user_id'],
 };
 const RESERVED = new Set(['select', 'order', 'limit', 'on_conflict']);
 
@@ -33,7 +34,7 @@ function filtered(rows, params) {
  * of their behaviour for the app's calls, including real PKCE verification.
  */
 export function createFakeSupabase() {
-  const tables = {profiles: [], sessions: [], picks: []};
+  const tables = {profiles: [], sessions: [], picks: [], shares: []};
   const codes = new Map(); // auth code -> {user, challenge}
   const requests = [];
   let failing = false;
@@ -68,7 +69,7 @@ export function createFakeSupabase() {
       return Response.json({access_token: 'jwt', token_type: 'bearer', user: entry.user});
     }
 
-    const match = url.pathname.match(/^[/]rest[/]v1[/](profiles|sessions|picks)$/);
+    const match = url.pathname.match(/^[/]rest[/]v1[/](profiles|sessions|picks|shares)$/);
     if (!match) return Response.json({message: 'not found'}, {status: 404});
     const table = tables[match[1]];
     const keys = PRIMARY_KEYS[match[1]];

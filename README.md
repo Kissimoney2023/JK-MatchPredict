@@ -104,6 +104,15 @@ Stored per person: GitHub user id, email, display name, avatar URL, last sign-in
 
 These describe a person's picks only; they are not a measure of the forecasts' accuracy (use `scripts/backtest.mjs` for that).
 
+## Sharing results
+
+**My picks → Share results** opens a dialog with two independent options:
+
+- **Result card (image).** A 1200x630 PNG drawn in the browser from the person's own statistics: accuracy with its 95% range, record, current run, correct-versus-expected and the last ten results, plus an optional name. Download it, send it with the phone's share sheet, or copy a text summary. Nothing is uploaded and no account is needed.
+- **Public link** (`/s/<random id>`, signed-in people only). A page anyone with the link can open. It is **off until created** and can be **switched off at any time** (the link then returns 404 at once). It shows a snapshot: accuracy and range, record, streaks and the last 10 _settled_ picks. It never shows the email, pending/upcoming picks or anything else about the person. The GitHub name appears **only if the person ticks the box**; otherwise the page says "A MatchPredict player". "Update with my latest results" refreshes the snapshot and keeps the same address. Pages are `noindex`, escaped server-side, script-free (they fit the strict CSP) and cached for about a minute.
+
+Needs the `shares` table: re-run [`supabase/schema.sql`](supabase/schema.sql) once (it is safe to repeat). `vercel.json` rewrites `/s/:id` to the `api/share.mjs` function. Limits: 10 link updates per person per hour.
+
 ## StrikerAPI (optional enrichment)
 
 Set `STRIKERAPI_API_KEY` (free key: 500 credits a month at https://strikerapi.com/signup) to add:
@@ -184,7 +193,7 @@ Cache and quota updates use Redis with atomic compare-and-set writes. Cache, quo
 - `server/service/prefetch.mjs` (budgeted cache warm-up), `history.mjs` (team match history) and `standings.mjs`; `api/prefetch.mjs` is the endpoint.
 - `server/service/accounts.mjs` (Supabase Auth GitHub sign-in with PKCE and sessions), `server/supabase.mjs` (REST client), `server/service/pickstore.mjs` (picks in the key-value store for browsers, in Supabase for accounts); `server/handler.mjs` adds the login routes and cookies; `supabase/schema.sql` creates the tables.
 - `server/strikerapi.mjs` (odds conversion, Shin devig, name matching, Elo maths) and `server/service/strikerapi.mjs` (cached StrikerAPI lookups).
-- `server/pickstats.mjs`: pick accuracy statistics (also published to the browser).
+- `server/pickstats.mjs`: pick accuracy statistics (also published to the browser). `server/service/shares.mjs` (public share snapshots) and `server/sharepage.mjs` (the public page); `public/js/views/share.js` and `sharecard.js` (dialog and image card).
 - `server/form.mjs` (recent form and head-to-head from raw histories) and `server/service/insights.mjs`.
 - `server/model.mjs`: normalization and experimental goal model.
 - `server/analysis.mjs`: outcome summaries and probability-based tips. Shared with the browser; `npm run build` publishes it as `/analysis.js`.

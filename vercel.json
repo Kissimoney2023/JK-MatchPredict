@@ -39,5 +39,11 @@
       "path": "/api/prefetch",
       "schedule": "0 5 * * *"
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/s/:id",
+      "destination": "/api/share?id=:id"
+    }
   ]
 }

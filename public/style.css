@@ -1319,3 +1319,63 @@ progress::-moz-progress-bar {
     font-size: 24px;
   }
 }
+
+/* ---------- Sharing ---------- */
+#share-dialog {
+  width: min(720px, calc(100% - 28px));
+}
+#share-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: var(--space-4) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.share-name {
+  display: block;
+  margin-bottom: var(--space-3);
+}
+.share-actions {
+  flex-wrap: wrap;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  color: var(--fg-soft);
+  font-size: 14px;
+}
+.check input {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+}
+.share-link {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+.share-link input {
+  flex: 1;
+}
+#share-dialog .stat-block {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.share-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-7);
+}
+.share-page h1 {
+  margin: var(--space-2) 0 var(--space-3);
+}
+.share-cta {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-4);
+  text-decoration: none;
+}

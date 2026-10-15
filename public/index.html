@@ -125,7 +125,8 @@
           </div>
           <div class="actions">
             <button id="settle" class="primary">Check results</button
-            ><button id="export" class="secondary">Export picks</button>
+            ><button id="export" class="secondary">Export picks</button
+            ><button id="share-results" class="secondary">Share results</button>
           </div>
         </div>
         <p id="picks-note" class="muted">
@@ -195,6 +196,10 @@
     <dialog id="analysis">
       <button id="close-analysis" class="close" aria-label="Close match analysis">×</button>
       <div id="analysis-body"></div>
+    </dialog>
+    <dialog id="share-dialog">
+      <button id="close-share" class="close" aria-label="Close">×</button>
+      <div id="share-body"></div>
     </dialog>
     <dialog id="auth-dialog">
       <button id="close-auth" class="close" aria-label="Close">×</button>

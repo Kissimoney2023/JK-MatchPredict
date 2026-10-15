@@ -12,6 +12,7 @@ import {createPicks} from './service/picks.mjs';
 import {createPrefetch} from './service/prefetch.mjs';
 import {createAccounts} from './service/accounts.mjs';
 import {createPickStore} from './service/pickstore.mjs';
+import {createShares} from './service/shares.mjs';
 import {createSupabase} from './supabase.mjs';
 
 export {AppError} from './errors.mjs';
@@ -66,6 +67,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
       : null;
   const pickStore = createPickStore({storage, supabase});
   const {picks, save, settlePicks, mergePicks} = createPicks({now, storage, lookup, pickStore});
+  const shares = createShares({supabase, pickStore, storage, now});
   const accounts = createAccounts({env, supabase, storage, now, mergePicks});
   const prefetch = createPrefetch({
     env,
@@ -100,6 +102,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
     save,
     settlePicks,
     accounts,
+    shares,
     prefetch: prefetch.run,
     budget: storage.budget,
   };

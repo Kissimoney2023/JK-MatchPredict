@@ -10,6 +10,7 @@ import {renderMatches} from './views/matches.js';
 import {exportPicks, loadPicks} from './views/picks.js';
 import {loadStandings} from './views/standings.js';
 import {loadInsights} from './views/insights.js';
+import {initShare} from './views/share.js';
 import {initAccountUi, renderAccount, finishLogin, takeLoginReturn} from './views/account.js';
 
 // ---- Data loading ---------------------------------------------------------
@@ -207,6 +208,7 @@ $('#export').onclick = exportPicks;
 document.addEventListener('click', onButtonClick);
 
 initAccountUi();
+initShare();
 const returnedFromLogin = takeLoginReturn();
 run(initialize).then(() => {
   if (returnedFromLogin) finishLogin(returnedFromLogin);

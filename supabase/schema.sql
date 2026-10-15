@@ -46,3 +46,17 @@ create index if not exists picks_user_created_idx on public.picks (user_id, crea
 alter table public.profiles enable row level security;
 alter table public.sessions enable row level security;
 alter table public.picks    enable row level security;
+
+-- Public share links (one per person). Shown at /s/<id>; only a snapshot of statistics and the
+-- last settled picks is stored, never the email, and the link can be disabled at any time.
+create table if not exists public.shares (
+  user_id      uuid primary key references public.profiles (id) on delete cascade,
+  id           text not null unique,          -- random public identifier used in the URL
+  enabled      boolean not null default true,
+  show_name    boolean not null default false,
+  display_name text,                          -- stored only when show_name is true
+  snapshot     jsonb not null,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+alter table public.shares enable row level security;
