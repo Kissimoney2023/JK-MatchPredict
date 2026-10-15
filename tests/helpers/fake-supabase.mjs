@@ -120,6 +120,11 @@ export function createFakeSupabase() {
       for (const row of rows) Object.assign(row, body);
       return Response.json(rows);
     }
+    if (method === 'DELETE') {
+      const rows = filtered(table, params);
+      for (const row of rows) table.splice(table.indexOf(row), 1);
+      return Response.json(rows);
+    }
     return Response.json({message: 'unsupported'}, {status: 405});
   };
 

@@ -7,7 +7,7 @@ import {showAnalysis} from './views/analysis.js';
 import {renderConnection} from './views/connection.js';
 import {renderLeagues} from './views/leagues.js';
 import {renderMatches} from './views/matches.js';
-import {exportPicks, loadPicks} from './views/picks.js';
+import {exportPicks, loadPicks, removePickClick} from './views/picks.js';
 import {loadStandings} from './views/standings.js';
 import {loadInsights} from './views/insights.js';
 import {initShare} from './views/share.js';
@@ -131,7 +131,7 @@ const savePick = (outcome) =>
     );
     message(
       result.saved
-        ? 'Pick saved and locked. View it in My picks.'
+        ? 'Pick saved. You can remove it in My picks until kickoff; after that it is locked.'
         : 'You already saved a pick for this match.',
       '#save-message',
     );
@@ -172,6 +172,7 @@ function onButtonClick(e) {
     state.showAllLeagues = !state.showAllLeagues;
     renderLeagues();
   }
+  if (b.hasAttribute('data-remove-pick')) removePickClick(b);
   if (b.dataset.analyze) analyzeMatch(b.dataset.analyze);
   if (b.hasAttribute('data-save')) savePick(Number(b.dataset.save));
 }

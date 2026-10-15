@@ -74,6 +74,10 @@ export function createSupabase({url, key, authKey, fetcher}) {
         prefer: 'return=representation',
       }),
 
+    /** Deletes the rows matching `query` and returns them. */
+    delete: (table, query) =>
+      call('/rest/v1/' + table, {method: 'DELETE', query, prefer: 'return=representation'}),
+
     /** The GitHub (or other provider) sign-in URL for the PKCE flow. */
     authorizeUrl: ({provider, redirectTo, challenge}) =>
       base +

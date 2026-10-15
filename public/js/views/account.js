@@ -30,10 +30,10 @@ export function renderAccount() {
     state.account ? `Account: ${label(state.account)}` : 'Sign in with GitHub',
   );
   $('#picks-note').textContent = !enabled
-    ? 'Picks lock when saved and live in a private server-side browser profile. Keep this browser’s cookies to retain access. This is not a cross-device account.'
+    ? 'Picks lock at kickoff and live in a private server-side browser profile. Keep this browser’s cookies to retain access. This is not a cross-device account.'
     : state.account
-      ? `Signed in as ${label(state.account)}. Picks lock when saved and follow you to every device where you sign in.`
-      : 'Picks lock when saved. Without signing in they live in this browser’s profile; sign in with GitHub to keep them on every device.';
+      ? `Signed in as ${label(state.account)}. Picks lock at kickoff and follow you to every device where you sign in.`
+      : 'Picks lock at kickoff. Without signing in they live in this browser’s profile; sign in with GitHub to keep them on every device.';
 }
 
 function showSignIn(error = '') {

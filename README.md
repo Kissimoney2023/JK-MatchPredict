@@ -184,7 +184,7 @@ All-league browsing uses one UTC day. Single-league queries support up to 31 day
 - Upstash Redis (via Vercel Storage) stores cache, forecast and pick records server-side.
 - A 256-bit random HttpOnly, SameSite=Lax, Secure-on-HTTPS cookie identifies a private browser profile. No extra auth API key is needed.
 - This is not an account/login system: picks do not follow you across devices. Clearing cookies or switching domains loses access to the old profile. Export your picks before doing so. JSON export is for your records; it is not an import or authentication token.
-- Picks are immutable and limited to 500 per profile. Atomic conditional writes prevent concurrent updates from overwriting each other. Duplicate canonical match picks are blocked.
+- Picks are limited to 500 per profile. A pick can be removed only before kickoff and only while it has no result (the server enforces both, and the database delete itself only matches unsettled rows); after kickoff or once settled it is immutable, so results cannot be erased from statistics or share links. Removing a pick frees the match for a new pick. Atomic conditional writes prevent concurrent updates from overwriting each other. Duplicate canonical match picks are blocked.
 - Profiles/data from the earlier ChatGPT Sites deployment are not migrated.
 - Results are checked on demand, three eligible pending matches per click. Cancelled/abandoned/awarded games are void; postponed and incomplete games remain pending. Fallback extra-time/penalty games remain pending when verified 90-minute scores are unavailable.
 

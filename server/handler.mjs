@@ -126,6 +126,7 @@ export function makeHandler(deps, env = process.env) {
       if (body.action === 'save')
         return json(await service.save(sid, body.forecastId, body.outcome));
       if (body.action === 'settle') return json(await service.settlePicks(sid));
+      if (body.action === 'delete-pick') return json(await service.deletePick(sid, body.pickId));
 
       if (body.action === 'login-start') {
         const {url: authorizeUrl, verifier} = await service.accounts.startLogin({

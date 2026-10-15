@@ -1379,3 +1379,21 @@ progress::-moz-progress-bar {
   margin-top: var(--space-4);
   text-decoration: none;
 }
+
+/* ---------- Pick removal ---------- */
+.pick-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.text-button.danger {
+  color: #fca5a5;
+}
+.text-button.danger:hover:not(:disabled) {
+  background: rgb(239 68 68 / 0.14);
+}
+.text-button.danger.armed {
+  background: rgb(239 68 68 / 0.2);
+  color: #fecaca;
+}

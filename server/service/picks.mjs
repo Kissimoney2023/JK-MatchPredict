@@ -61,5 +61,19 @@ export function createPicks({now, storage, lookup, pickStore}) {
     return {checked: eligible.length, settled: changes.size, unavailable};
   }
 
-  return {picks, save, settlePicks, mergePicks: pickStore.mergeInto};
+  /**
+   * Lets a person take back a pick, but only before kickoff and only while it has no result.
+   * After that it is locked, so results cannot be hidden from statistics or share links.
+   */
+  async function deletePick(sid, pickId) {
+    if (!/^[a-f0-9]{64}$/.test(pickId || '')) throw new AppError(400, 'pick', 'Invalid pick.');
+    const pick = (await picks(sid)).find((p) => p.id === pickId);
+    if (!pick) throw new AppError(404, 'pick', 'That pick no longer exists.');
+    if (pick.result) throw new AppError(409, 'locked', 'Settled picks cannot be removed.');
+    if (!(Date.parse(pick.forecast.kickoff) > now()))
+      throw new AppError(409, 'locked', 'Kickoff has passed, so this pick is locked.');
+    return {removed: await pickStore.remove(sid, pickId)};
+  }
+
+  return {picks, save, settlePicks, deletePick, mergePicks: pickStore.mergeInto};
 }

@@ -144,5 +144,29 @@ export function createPickStore({storage, supabase}) {
     return inserted.length;
   }
 
-  return {list, add, applyResults, mergeInto};
+  /**
+   * Removes a pick that has no result yet. Settled picks are never removed here (the caller
+   * checks kickoff). Returns true if a pick was removed.
+   */
+  async function remove(sid, pickId) {
+    if (isAccount(sid)) {
+      const deleted = await database().delete('picks', {
+        user_id: 'eq.' + userIdOf(sid),
+        pick_id: 'eq.' + pickId,
+        result: 'is.null',
+      });
+      return deleted.length > 0;
+    }
+    let removed = false;
+    await atomic('picks/' + sid, (old) => {
+      const items = old?.items ?? [];
+      const target = items.find((p) => p.id === pickId && !p.result);
+      if (!target) return undefined;
+      removed = true;
+      return {items: items.filter((p) => p !== target)};
+    });
+    return removed;
+  }
+
+  return {list, add, applyResults, remove, mergeInto};
 }

@@ -66,7 +66,12 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
         })
       : null;
   const pickStore = createPickStore({storage, supabase});
-  const {picks, save, settlePicks, mergePicks} = createPicks({now, storage, lookup, pickStore});
+  const {picks, save, settlePicks, deletePick, mergePicks} = createPicks({
+    now,
+    storage,
+    lookup,
+    pickStore,
+  });
   const shares = createShares({supabase, pickStore, storage, now});
   const accounts = createAccounts({env, supabase, storage, now, mergePicks});
   const prefetch = createPrefetch({
@@ -101,6 +106,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
     picks,
     save,
     settlePicks,
+    deletePick,
     accounts,
     shares,
     prefetch: prefetch.run,
