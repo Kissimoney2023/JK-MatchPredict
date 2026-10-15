@@ -101,7 +101,12 @@ export function renderSharePage({displayName, snapshot: s, updatedAt, origin, id
     <meta property="og:title" content="${esc(title)}" />
     <meta property="og:description" content="${esc(description)}" />
     <meta property="og:url" content="${esc(link)}" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="${esc(origin)}/icons/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="JK MatchPredict: football forecasts and virtual picks" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="${esc(origin)}/icons/og-image.jpg" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>

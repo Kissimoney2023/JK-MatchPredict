@@ -38,6 +38,12 @@ test('the web app manifest is complete and its icons exist at the declared sizes
   assert.deepEqual(pngSize(read('public/icons/favicon-32.png')), [32, 32]);
 });
 
+test('the link-preview image exists, is a JPEG and is small enough for chat apps', () => {
+  const image = read('public/icons/og-image.jpg');
+  assert.deepEqual([...image.subarray(0, 3)], [0xff, 0xd8, 0xff]);
+  assert.ok(image.length < 300 * 1024, 'previews over about 300 KB are skipped by some apps');
+});
+
 test('the page links the manifest and icons', () => {
   const html = read('public/index.html').toString('utf8');
   for (const needle of [

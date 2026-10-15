@@ -124,6 +124,8 @@ These describe a person's picks only; they are not a measure of the forecasts' a
 
 ## Sharing results
 
+Shared links show a large link preview (title, summary and a branded 1200×630 image, `public/icons/og-image.jpg`) when pasted into chat apps or social networks. The image is the same for everyone; it is not generated per person, so it never carries a name or results.
+
 **My picks → Share results** opens a dialog with two independent options:
 
 - **Result card (image).** A 1200x630 PNG drawn in the browser from the person's own statistics: accuracy with its 95% range, record, current run, correct-versus-expected and the last ten results, plus an optional name. Download it, send it with the phone's share sheet, or copy a text summary. Nothing is uploaded and no account is needed.

@@ -198,6 +198,11 @@ test('the public page escapes everything and reveals neither email nor hidden na
   assert.ok(!html.includes('<img src=x'), 'markup in team names must be escaped');
   assert.ok(html.includes('&lt;img src=x'));
   assert.ok(html.includes('A MatchPredict player'));
+  assert.ok(
+    html.includes(`og:image" content="${ORIGIN}/icons/og-image.jpg`),
+    'absolute preview image',
+  );
+  assert.ok(html.includes('summary_large_image'));
   assert.ok(html.includes('noindex'));
   assert.ok(html.includes('https://app.example/s/abcdefABCDEF'));
   assert.ok(!html.includes('<script'), 'the page needs no scripts (strict CSP)');
