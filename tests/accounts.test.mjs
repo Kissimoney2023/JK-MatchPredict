@@ -466,3 +466,73 @@ test('the per-instance session cache stays bounded', async () => {
   await x.service.accounts.resolve(tokens[0]); // oldest: evicted, read again
   assert.equal(selects(), 601);
 });
+
+test('providers: GitHub by default, Google only when enabled, unknown ones never', async () => {
+  const defaults = setup();
+  assert.deepEqual(defaults.service.accounts.info().providers, ['github']);
+  await assert.rejects(
+    () => defaults.service.accounts.startLogin({origin: ORIGIN, ip: '1.1.1.1', provider: 'google'}),
+    /not available/,
+  );
+
+  const both = setup({env: {AUTH_PROVIDERS: ' GitHub, google ,twitter,google'}});
+  assert.deepEqual(
+    both.service.accounts.info().providers,
+    ['github', 'google'],
+    'trimmed, de-duplicated, unknown dropped',
+  );
+  const {url} = await both.service.accounts.startLogin({
+    origin: ORIGIN,
+    ip: '1.1.1.1',
+    provider: 'google',
+  });
+  assert.equal(new URL(url).searchParams.get('provider'), 'google');
+  const fallback = await both.service.accounts.startLogin({origin: ORIGIN, ip: '1.1.1.1'});
+  assert.equal(
+    new URL(fallback.url).searchParams.get('provider'),
+    'github',
+    'the first offered one is the default',
+  );
+  for (const bad of ['facebook', 'GITHUB ', 'github&redirect_to=https://evil.example', '']) {
+    if (bad === '') continue; // empty means "use the default"
+    await assert.rejects(
+      () => both.service.accounts.startLogin({origin: ORIGIN, ip: '1.1.1.1', provider: bad}),
+      /not available/,
+      bad,
+    );
+  }
+
+  const junkOnly = setup({env: {AUTH_PROVIDERS: 'twitter,facebook'}});
+  assert.deepEqual(
+    junkOnly.service.accounts.info().providers,
+    ['github'],
+    'falls back to the default',
+  );
+});
+
+test('a Google sign-in reads name and picture from the Google profile', async () => {
+  const x = setup({env: {AUTH_PROVIDERS: 'github,google'}});
+  const googleUser = {
+    id: '44444444-4444-4444-8444-444444444444',
+    email: 'gabi@example.com',
+    app_metadata: {provider: 'google'},
+    user_metadata: {
+      name: 'Gabi Google',
+      full_name: 'Gabi G. Google',
+      picture: 'https://lh3.example/a.png',
+    },
+  };
+  const {url, verifier} = await x.service.accounts.startLogin({
+    origin: ORIGIN,
+    ip: '1.1.1.1',
+    provider: 'google',
+  });
+  const code = x.db.issueCode(googleUser, url);
+  const result = await x.service.accounts.completeLogin({code, verifier, anonymousSid: null});
+
+  assert.equal(result.account.name, 'Gabi Google');
+  assert.equal(result.avatarUrl, 'https://lh3.example/a.png');
+  const profile = x.db.tables.profiles.find((p) => p.id === googleUser.id);
+  assert.equal(profile.provider, 'google');
+  assert.equal(profile.email, 'gabi@example.com');
+});

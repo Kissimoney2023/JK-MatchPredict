@@ -7,7 +7,10 @@ const SESSION_CACHE_MS = 60_000;
 const SESSION_CACHE_MAX = 500;
 const MAX_CODE_LENGTH = 512;
 const TOKEN_FORMAT = /^[a-f0-9]{64}$/;
-const PROVIDER = 'github';
+// Sign-in methods the app knows how to read a profile from. AUTH_PROVIDERS (comma separated,
+// default "github") chooses which ones are offered; each also needs enabling in Supabase.
+const SUPPORTED_PROVIDERS = ['github', 'google'];
+const DEFAULT_PROVIDERS = ['github'];
 
 const base64url = (buffer) => Buffer.from(buffer).toString('base64url');
 
@@ -41,23 +44,34 @@ export function createAccounts({env, supabase, storage, now, mergePicks}) {
     }
   }
 
+  function enabledProviders() {
+    const wanted = String(env.AUTH_PROVIDERS || '')
+      .split(',')
+      .map((p) => p.trim().toLowerCase())
+      .filter((p) => SUPPORTED_PROVIDERS.includes(p));
+    return wanted.length ? [...new Set(wanted)] : DEFAULT_PROVIDERS;
+  }
+
   function info() {
     return supabase
-      ? {enabled: true, providers: [PROVIDER]}
+      ? {enabled: true, providers: enabledProviders()}
       : {enabled: false, reason: 'Sign-in is not configured.'};
   }
   function assertEnabled() {
     if (!supabase) throw new AppError(503, 'accounts_disabled', 'Sign-in is not configured.');
   }
 
-  /** Begins GitHub sign-in. Returns the URL to visit and the PKCE verifier for a short cookie. */
-  async function startLogin({origin, ip}) {
+  /** Begins sign-in with one provider. Returns the URL to visit and the PKCE verifier for a short cookie. */
+  async function startLogin({origin, ip, provider}) {
     assertEnabled();
+    const chosen = provider || enabledProviders()[0];
+    if (!enabledProviders().includes(chosen))
+      throw new AppError(400, 'auth', 'That sign-in method is not available.');
     await budget('login-ip-' + hash(ip || 'unknown'), 30, HOUR);
     const verifier = base64url(randomBytes(48));
     const challenge = base64url(createHash('sha256').update(verifier).digest());
     const redirectTo = withoutTrailingSlashes(env.SITE_URL || origin) + '/';
-    return {url: supabase.authorizeUrl({provider: PROVIDER, redirectTo, challenge}), verifier};
+    return {url: supabase.authorizeUrl({provider: chosen, redirectTo, challenge}), verifier};
   }
 
   /** Finishes sign-in: exchanges the code, upserts the profile, opens a session, merges picks. */
@@ -79,8 +93,10 @@ export function createAccounts({env, supabase, storage, now, mergePicks}) {
       email: user.email || meta.email || null,
       display_name:
         meta.user_name || meta.preferred_username || meta.name || meta.full_name || null,
-      avatar_url: meta.avatar_url || null,
-      provider: PROVIDER,
+      avatar_url: meta.avatar_url || meta.picture || null,
+      provider: SUPPORTED_PROVIDERS.includes(user.app_metadata?.provider)
+        ? user.app_metadata.provider
+        : DEFAULT_PROVIDERS[0],
       last_login_at: new Date(now()).toISOString(),
     };
     await supabase.insert('profiles', [profile], {onConflict: 'id', merge: true});

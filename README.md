@@ -12,6 +12,7 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - API-Football primary; football-data.org fallback where the competition and match can be verified.
 - Forecast source, timestamps, model limitations and missing-data states.
 - Private server-stored virtual picks, frozen at save, accessible through a browser-profile cookie.
+- Installable web app (PWA) with an offline-capable shell; see Install and offline use.
 - Result checking and JSON export. No deposits, wagers, wallets or payments.
 - Explicit demo mode with invented examples, available even before keys are configured.
 
@@ -69,9 +70,9 @@ npm run build
 
 The build copies public assets and fonts into `dist` and verifies that the function bundles with esbuild. Automated tests use mocked football responses and a conditional-write storage adapter; they do not prove paid/free plan coverage or real API accuracy.
 
-## Accounts (optional GitHub sign-in with Supabase)
+## Accounts (optional GitHub and Google sign-in with Supabase)
 
-Without an account, picks live in a private server-side profile tied to the browser's cookie. With accounts, a person signs in with GitHub (through Supabase Auth) and their picks follow them to every device. Signing in is optional; picks saved in the browser are merged into the account on first sign-in (duplicates are skipped). GitHub needs no domain and no email sender. The button is hidden until Supabase is configured.
+Without an account, picks live in a private server-side profile tied to the browser's cookie. With accounts, a person signs in with GitHub or Google (through Supabase Auth) and their picks follow them to every device. Signing in is optional; picks saved in the browser are merged into the account on first sign-in (duplicates are skipped). GitHub needs no domain and no email sender. The button is hidden until Supabase is configured.
 
 ### One-time setup
 
@@ -84,14 +85,31 @@ Without an account, picks live in a private server-side profile tied to the brow
    - `SUPABASE_SECRET_KEY`: the **secret** key (`sb_secret_...`). The legacy name `SUPABASE_SERVICE_ROLE_KEY` (the old `service_role` key) also works. This key bypasses all security rules: keep it server-side only, never prefix it with `NEXT_PUBLIC_`, never commit it, never paste it in a chat.
    - `SUPABASE_PUBLISHABLE_KEY`: the **publishable** key (`sb_publishable_...`), which is safe to expose. It is used only for the sign-in code exchange, so the app needs no elevated rights there. If omitted, the secret key is used for that step too.
    - `SITE_URL` (optional): fixes the address people return to after signing in; defaults to the address of the request.
+   - `AUTH_PROVIDERS` (optional): comma-separated sign-in buttons to show, `github`, `google` or `github,google`. Default `github`.
 
    The names `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from Supabase's Next.js quickstart are also accepted. This app is **not** a Next.js app and uses no Supabase SDK or `@supabase/ssr`: the server talks to Supabase's REST and Auth APIs directly, and the browser never receives a Supabase key. Supabase's new keys are not JWTs, so the client sends them on the `apikey` header only.
+
+### Adding Google sign-in
+
+1. Google Cloud Console → APIs & Services → **OAuth consent screen**: configure it (External is fine), then **Credentials → Create credentials → OAuth client ID → Web application**. Under **Authorized redirect URIs** add `https://<your-project-ref>.supabase.co/auth/v1/callback` (shown on Supabase's Google provider page).
+2. Supabase → Authentication → Providers → **Google**: enable it and paste the Client ID and Client Secret there (they are never needed in Vercel or in this repository).
+3. In Vercel set `AUTH_PROVIDERS=github,google` and redeploy. The sign-in dialog then offers both buttons. The server refuses any provider that is not listed.
+
+Signing in with GitHub and with Google using the same email can create two separate accounts unless Supabase links identities (Authentication → Sign In / Providers → "Allow manual linking" / automatic linking settings); picks are per account.
 
 ### How it works
 
 OAuth with PKCE, done on the server so no Supabase key ever reaches the browser. "Continue with GitHub" asks the server for a sign-in URL; the server keeps a one-time PKCE verifier in a short-lived `HttpOnly` cookie and returns the URL. After GitHub, Supabase redirects back with `?code=`; the page strips it from the address bar and posts it to the server, which exchanges it (code and verifier together; a stolen code alone is useless), saves the profile, opens a 90-day server-side session and merges the browser's picks. The session cookie (`jk_auth`) is `HttpOnly`, `SameSite=Lax` and `Secure`, separate from the anonymous profile cookie, and only a hash of its token is stored. Sign-out revokes the session. Session lookups are cached for a minute per server instance. Picks of signed-in people are rows in `public.picks` (one per match, original forecast kept), which also makes accuracy statistics a simple query.
 
-Stored per person: GitHub user id, email, display name, avatar URL, last sign-in and their picks. No passwords. Limits: 30 sign-in starts per client address per hour. Only GitHub is enabled; Google can be added later with another provider switch plus a small UI change.
+Stored per person: GitHub user id, email, display name, avatar URL, last sign-in and their picks. No passwords. Limits: 30 sign-in starts per client address per hour. Providers are chosen with `AUTH_PROVIDERS`.
+
+## Install and offline use
+
+The site is an installable progressive web app: browsers offer "Install" (Chrome, Edge, Android) or "Add to Home Screen" (iOS Safari), and it then opens in its own window with the app icon. `public/manifest.webmanifest` and the icons in `public/icons/` describe it; `scripts/sw.template.js` becomes `dist/sw.js` at build time.
+
+- The app shell (HTML, scripts, styles, fonts) is network-first: a new deploy reaches people the next time they are online, and the cached copy is only used when the network fails, so an installed app can still open offline. Matches, forecasts and picks need the network and show a clear "You appear to be offline" message instead of stale data.
+- Never cached: `/api/*`, public share pages (`/s/*`), non-GET requests and other origins, so private data is not stored by the worker, and sign-in codes in the address are never written to the cache.
+- The cache name includes a hash of every published file; old caches are deleted when a new worker takes over.
 
 ## Pick statistics
 

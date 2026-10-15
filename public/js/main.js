@@ -211,6 +211,10 @@ document.addEventListener('click', onButtonClick);
 initAccountUi();
 initShare();
 const returnedFromLogin = takeLoginReturn();
+// Offline shell and installability. A failure here must never affect the app.
+if ('serviceWorker' in navigator)
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+
 run(initialize).then(() => {
   if (returnedFromLogin) finishLogin(returnedFromLogin);
 });

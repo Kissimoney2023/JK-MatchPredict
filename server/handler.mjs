@@ -132,6 +132,7 @@ export function makeHandler(deps, env = process.env) {
         const {url: authorizeUrl, verifier} = await service.accounts.startLogin({
           origin: url.origin,
           ip: clientIp(request),
+          provider: body.provider,
         });
         // The PKCE verifier stays in a short-lived HttpOnly cookie until the sign-in returns.
         headers.append('Set-Cookie', `jk_pkce=${verifier}; ${cookieAttributes}; Max-Age=600`);
