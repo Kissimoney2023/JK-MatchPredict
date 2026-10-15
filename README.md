@@ -150,16 +150,25 @@ The experimental `jk-ratings-v2` fallback (used when API-Football has no forecas
 
 ### Backtesting
 
-`server/evaluation.mjs` replays the model chronologically (each match is predicted only from results before its refit window) and reports accuracy, log loss, Brier score and calibration against two baselines: the home/draw/away frequency prior and the legacy model. Tests verify the maths on synthetic leagues with known team strengths, where the ratings model beats both baselines. That says the code works, **not** how accurate it is on real football. To measure that, run:
+`server/evaluation.mjs` replays the model chronologically (each match is predicted only from results before its refit window, using about the last year of results, as in production) and reports accuracy, log loss, Brier score and calibration against a frequency prior, the legacy model and, when available, the bookmakers' closing line.
 
-```sh
-FOOTBALL_DATA_ORG_KEY=... node scripts/backtest.mjs --competition CL --days 90
-node scripts/backtest.mjs --tune   # compare half-life / shrinkage settings on the cached data
-```
+**Free, no key:** `node scripts/backtest-csv.mjs --league E0,SP1,D1,I1,F1` downloads historical results and Pinnacle closing odds from football-data.co.uk (Premier League, La Liga, Bundesliga, Serie A, Ligue 1; seasons 2021/22 to now) and runs the full test in about a minute. Settings are tuned on 2024/25 and judged on 2025/26 onwards, which the tuning never saw.
 
-The first run downloads each team's last-year results (about 6.5 s per team on the free tier) into `.cache/`. Do not advertise accuracy figures until you have run this on real data.
+**With a football-data.org key:** `node scripts/backtest.mjs --competition CL` runs the same machinery on any competition that API covers, including the Champions League (not available from the free CSV source).
 
-No bookmaker prices are connected. Tips therefore do not establish positive expected value, profit or guaranteed winnings. Result and tip markets refer to 90 minutes plus stoppage time.
+**Result (holdout 2025/26 onwards, 1,835 matches in five leagues; lower log loss is better):**
+
+| Model                                             |  Log loss | Accuracy (home/draw/away) |
+| ------------------------------------------------- | --------: | ------------------------: |
+| Frequency prior                                   |     1.074 |                       n/a |
+| Legacy goal model (`jk-poisson-v1`)               |     1.027 |                       n/a |
+| **Ratings model (`jk-ratings-v2`)**               | **1.003** |                     51.5% |
+| Bookmaker closing line (Pinnacle, margin removed) |     0.974 |                     53.9% |
+
+- The ratings model clearly beats the naive baseline in every league and the legacy model in the Premier League, Bundesliga and Serie A (the other two point the same way but are not statistically clear).
+- It is about 0.03 log loss per match **worse than the closing line** (clearly worse in four of five leagues, not clearly different in the Premier League). That is the normal state of affairs: bookmaker prices also reflect injuries, line-ups and money flow, which this model ignores. This is why the StrikerAPI market consensus, when configured, is ranked above the ratings model.
+- No consistent draw or home/away bias was found, and re-tuning half-life and shrinkage on 2024/25 did not improve the holdout (settings differ by league but the holdout scores are equal), so the defaults stay.
+- **Not measured:** Champions League and other cross-league fixtures (the ratings there rest on weaker cross-league links), and the API-Football forecast (not available on the free plan). Treat percentages as estimates, never as certainties.
 
 ## Provider fallback
 

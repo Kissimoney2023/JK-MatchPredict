@@ -165,6 +165,6 @@ export function ratingsForecast({rows, homeId, awayId, kickoff, now = Date.now()
     teamsRated: ratings.teams,
     matchesUsed: ratings.matches,
     modelVersion: 'jk-ratings-v2',
-    explanation: `Experimental attack/defence model fitted to ${ratings.matches} recent regulation-time results involving ${ratings.teams} teams (${sampleHome} for the home side, ${sampleAway} for the away side). Recent matches count more and ratings are shrunk toward the average. Not yet validated on real results; no injury, lineup or rotation adjustment.`,
+    explanation: `Experimental attack/defence model fitted to ${ratings.matches} recent regulation-time results involving ${ratings.teams} teams (${sampleHome} for the home side, ${sampleAway} for the away side). Recent matches count more and ratings are shrunk toward the average. Backtested on about 1,800 league matches from 2025/26 (five major leagues): clearly better than naive baselines, but a little less accurate than bookmaker closing prices. Not tested on cup or cross-league fixtures; no injury, lineup or rotation adjustment.`,
   };
 }

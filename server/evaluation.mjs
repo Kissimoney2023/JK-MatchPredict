@@ -69,19 +69,34 @@ const asRows = (results) =>
  *  - "legacy": the original goal-average model (jk-poisson-v1)
  * All three are scored on the same matches (those every model can predict).
  */
-export function backtest(results, {testDays = 90, refitDays = 7, options = {}} = {}) {
+export function backtest(
+  results,
+  {
+    testDays = 90,
+    refitDays = 7,
+    testFrom,
+    testTo,
+    trainDays = 365,
+    keepPredictions = false,
+    options = {},
+  } = {},
+) {
   const opts = {...DEFAULTS, ...options};
   const sorted = [...results].sort((a, b) => a.t - b.t);
   if (!sorted.length) return {matches: 0, skipped: 0, models: {}};
-  const end = sorted[sorted.length - 1].t;
-  const start = end - testDays * DAY;
-  const predictions = {ratings: [], prior: [], legacy: []};
+  const end = testTo ?? sorted[sorted.length - 1].t;
+  const start = testFrom ?? end - testDays * DAY;
+  // When results carry a bookmaker line (`market`: three fractions), it is scored too, on the
+  // same matches, and matches without one are skipped for every model.
+  const withMarket = sorted.some((r) => r.market);
+  const predictions = {ratings: [], prior: [], legacy: [], ...(withMarket ? {market: []} : {})};
   let skipped = 0;
 
   for (let windowStart = start; windowStart <= end; windowStart += refitDays * DAY) {
     const windowEnd = windowStart + refitDays * DAY;
-    const train = sorted.filter((r) => r.t < windowStart);
-    const test = sorted.filter((r) => r.t >= windowStart && r.t < windowEnd);
+    // Like production, a model only sees roughly the last year of results.
+    const train = sorted.filter((r) => r.t < windowStart && r.t >= windowStart - trainDays * DAY);
+    const test = sorted.filter((r) => r.t >= windowStart && r.t < windowEnd && r.t <= end);
     if (!test.length || train.length < 20) {
       skipped += test.length;
       continue;
@@ -93,6 +108,10 @@ export function backtest(results, {testDays = 90, refitDays = 7, options = {}} =
     const rows = asRows(train);
 
     for (const r of test) {
+      if (withMarket && !r.market) {
+        skipped++;
+        continue;
+      }
       const played = (id) => ratings.count[ratings.index.get(id)] ?? 0;
       if (played(r.home) < opts.minMatchesPerTeam || played(r.away) < opts.minMatchesPerTeam) {
         skipped++;
@@ -108,12 +127,14 @@ export function backtest(results, {testDays = 90, refitDays = 7, options = {}} =
       predictions.ratings.push({p: toFractions(modelPrediction.p), outcome});
       predictions.legacy.push({p: toFractions(legacy.p), outcome});
       predictions.prior.push({p: prior, outcome});
+      if (withMarket) predictions.market.push({p: r.market, outcome});
     }
   }
 
   return {
     matches: predictions.ratings.length,
     skipped,
+    ...(keepPredictions ? {predictions} : {}),
     models: Object.fromEntries(Object.entries(predictions).map(([k, v]) => [k, summarize(v)])),
   };
 }

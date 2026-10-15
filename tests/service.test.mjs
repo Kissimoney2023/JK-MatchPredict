@@ -147,7 +147,7 @@ test('API outage falls back, retains a stable source and model labels', async ()
   const f = await x.service.forecast('fd:200', l.listingId);
   assert.equal(f.modelVersion, 'jk-ratings-v2');
   assert.equal(f.analysis.tips.length, 4);
-  assert(f.explanation.includes('Not yet validated'));
+  assert(f.explanation.includes('Backtested'));
   assert.equal(
     f.p.reduce((a, b) => a + b),
     100,

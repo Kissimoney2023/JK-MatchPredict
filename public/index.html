@@ -174,10 +174,13 @@
           from football-data.org, including each team’s other competitions. Newer matches count
           more, ratings are shrunk toward the average, and the opponent’s strength is taken into
           account. Home, draw and away chances come from independent Poisson goal distributions. It
-          is still experimental: it has not been validated on real results, ignores injuries,
-          lineups and rotation, and can compare teams from different leagues only roughly. When a
-          team has too little history, an older, simpler goal-average model is used, and when even
-          that is not possible there is no forecast.
+          was tested on about 1,800 league matches from 2025/26 across the five major leagues (each
+          predicted only from earlier results): it clearly beats naive baselines and the older
+          model, but is a little less accurate than bookmaker closing prices. It has not been tested
+          on Champions League fixtures, ignores injuries, lineups and rotation, and can compare
+          teams from different leagues only roughly. When a team has too little history, an older,
+          simpler goal-average model is used, and when even that is not possible there is no
+          forecast.
         </p>
         <h3>Pick records</h3>
         <p>
