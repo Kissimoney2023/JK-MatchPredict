@@ -112,14 +112,26 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
           console.warn(
             `[provider:${kind}] HTTP ${response.status} for ${path.split('?')[0]}: ${detail}`,
           );
-          const error = new AppError(
-            response.status === 429 ? 429 : 502,
-            'provider',
-            `${name} request failed (HTTP ${response.status}${detail ? ': ' + detail : ''}). Check plan access, API key and quota.`,
-          );
+          const status = response.status;
+          const described = `${name} request failed (HTTP ${status}${detail ? ': ' + detail : ''}). Check plan access, API key and quota.`;
+          // 403: this resource is not on the plan. Remember that for the request, but do not
+          // pause the whole provider: its other endpoints still work.
+          if (status === 403) {
+            const reason = `${name} does not cover this request on your plan (HTTP 403${detail ? ': ' + detail : ''}).`;
+            await store.setJSON(blockKey, {until: now() + PLAN_BLOCK_MS, reason});
+            throw new AppError(403, 'plan', reason);
+          }
+          // 400 / 404: a problem with this one request, not with the provider.
+          if (status === 400 || status === 404)
+            throw new AppError(
+              status === 404 ? 404 : 502,
+              'request',
+              `${name} request failed (HTTP ${status}${detail ? ': ' + detail : ''}).`,
+            );
+          // 401, 429, 5xx: the provider (or our key) is unusable for a while.
+          const error = new AppError(status === 429 ? 429 : 502, 'provider', described);
           // Out of credits / bad key will not recover within a minute.
-          if (kind === 'sa' && (response.status === 402 || response.status === 401))
-            error.cooldownMs = HOUR;
+          if (kind === 'sa' && (status === 402 || status === 401)) error.cooldownMs = HOUR;
           throw error;
         }
         const raw = await response.json();

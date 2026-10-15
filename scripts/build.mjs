@@ -1,4 +1,5 @@
-import {access, cp, mkdir, readFile, rm} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import {access, cp, mkdir, readdir, readFile, rm} from 'node:fs/promises';
 import {build} from 'esbuild';
 
 // 1. Static site: copy public/ to dist/. The analysis module is shared with the server,
@@ -28,7 +29,21 @@ await build({
   packages: 'external',
 });
 
-// 3. Sanity-check the published files.
+// 3. Syntax-check every published script: a typo in one module would otherwise ship and
+//    leave the page silently dead (browsers show no error for a module that fails to parse).
+async function scripts(dir) {
+  const found = [];
+  for (const entry of await readdir(dir, {withFileTypes: true})) {
+    const path = dir + '/' + entry.name;
+    if (entry.isDirectory()) found.push(...(await scripts(path)));
+    else if (entry.name.endsWith('.js')) found.push(path);
+  }
+  return found;
+}
+for (const file of await scripts('dist'))
+  execFileSync(process.execPath, ['--check', file], {stdio: 'pipe'});
+
+// 4. Sanity-check the published files.
 const html = await readFile('dist/index.html', 'utf8');
 for (const file of ['style.css', 'analysis.js', 'js/main.js']) await access('dist/' + file);
 if (!html.includes('id="analysis"')) throw Error('Analysis view missing');

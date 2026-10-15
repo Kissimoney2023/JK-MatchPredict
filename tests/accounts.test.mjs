@@ -423,3 +423,46 @@ test('environment variable names from the Supabase quickstart and legacy names b
   });
   assert.equal(publicOnly.service.accounts.info().enabled, false);
 });
+
+test('HTTP: a database outage degrades the status call but never mixes up pick profiles', async () => {
+  const x = setup();
+  const handler = makeHandler(() => x.service);
+  const get = (action, jar) =>
+    handler(
+      new Request(`${ORIGIN}/api/football?action=${action}`, {
+        headers: {cookie: cookieHeader(jar)},
+      }),
+    );
+  const signedIn = await signIn(x);
+  const jar = {jk_session: 'a'.repeat(64), jk_auth: signedIn.authToken};
+
+  x.advance(61_000); // the short session cache expires
+  x.db.setFailing(true);
+
+  const status = await get('status', jar);
+  assert.equal(status.status, 200, 'the page still loads');
+  const body = await status.json();
+  assert.equal(body.account, null);
+  assert.equal(body.accountError, true);
+
+  const picks = await get('picks', jar);
+  assert.equal(picks.status, 502, 'picks fail loudly instead of showing the anonymous profile');
+
+  // Anonymous visitors are not affected at all.
+  const anonymous = await get('picks', {jk_session: 'b'.repeat(64)});
+  assert.equal(anonymous.status, 200);
+});
+
+test('the per-instance session cache stays bounded', async () => {
+  const x = setup();
+  const selects = () =>
+    x.db.requests.filter((r) => r.path.endsWith('/sessions') && r.method === 'GET').length;
+  const tokens = Array.from({length: 600}, (_, i) => String(i).padStart(64, '0'));
+  for (const token of tokens) await x.service.accounts.resolve(token);
+  assert.equal(selects(), 600);
+
+  await x.service.accounts.resolve(tokens[599]); // recent: still cached
+  assert.equal(selects(), 600);
+  await x.service.accounts.resolve(tokens[0]); // oldest: evicted, read again
+  assert.equal(selects(), 601);
+});

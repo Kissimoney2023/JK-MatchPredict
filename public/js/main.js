@@ -1,7 +1,7 @@
 import {api} from './api.js';
 import {run} from './busy.js';
 import {demoLeagues, samples} from './demo.js';
-import {$, $$, message, todayUtc} from './dom.js';
+import {$, $$, addDays, message, todayUtc} from './dom.js';
 import {state} from './state.js';
 import {showAnalysis} from './views/analysis.js';
 import {renderConnection} from './views/connection.js';
@@ -68,6 +68,8 @@ async function initialize() {
     state.storage = status.storage;
     state.accounts = status.accounts ?? {enabled: false};
     state.account = status.account ?? null;
+    if (status.accountError)
+      message('Could not verify your sign-in right now. Reload the page to try again.');
     renderAccount();
     renderConnection();
     if (status.connected) {
@@ -152,6 +154,10 @@ function onButtonClick(e) {
   if (b.hasAttribute('data-demo') && !state.busy) startDemo();
   if (b.hasAttribute('data-live')) run(initialize);
   if (b.dataset.league && !state.busy) {
+    // "All leagues" browses a single day. Leaving it for one competition restores a 30-day
+    // window, otherwise that competition would show an empty one-day list.
+    if (state.league === 'all' && b.dataset.league !== 'all')
+      $('#date-to').value = addDays($('#date-from').value, UPCOMING_WINDOW_DAYS);
     state.league = b.dataset.league;
     renderLeagues();
     run(loadMatches);

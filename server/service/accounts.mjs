@@ -4,6 +4,7 @@ import {hash, HOUR, DAY} from '../util.mjs';
 
 const SESSION_DAYS = 90;
 const SESSION_CACHE_MS = 60_000;
+const SESSION_CACHE_MAX = 500;
 const MAX_CODE_LENGTH = 512;
 const TOKEN_FORMAT = /^[a-f0-9]{64}$/;
 const PROVIDER = 'github';
@@ -28,6 +29,17 @@ function withoutTrailingSlashes(url) {
 export function createAccounts({env, supabase, storage, now, mergePicks}) {
   const {budget} = storage;
   const sessionCache = new Map(); // token hash -> {account, until}
+
+  /** Keeps the per-instance session cache bounded on long-lived servers. */
+  function pruneSessionCache() {
+    if (sessionCache.size <= SESSION_CACHE_MAX) return;
+    for (const [k, v] of sessionCache) if (v.until <= now()) sessionCache.delete(k);
+    // Still too big (many live sessions): drop the oldest entries; they are just re-read.
+    for (const k of sessionCache.keys()) {
+      if (sessionCache.size <= SESSION_CACHE_MAX) break;
+      sessionCache.delete(k);
+    }
+  }
 
   function info() {
     return supabase
@@ -110,6 +122,7 @@ export function createAccounts({env, supabase, storage, now, mergePicks}) {
     const valid = s && !s.revoked && Date.parse(s.expires_at) > now();
     const account = valid ? {id: s.user_id, email: s.email, name: s.display_name} : null;
     sessionCache.set(key, {account, until: now() + SESSION_CACHE_MS});
+    pruneSessionCache();
     return account;
   }
 

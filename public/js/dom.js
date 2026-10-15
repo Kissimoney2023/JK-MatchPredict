@@ -15,6 +15,10 @@ export const formatDate = (value) =>
     minute: '2-digit',
   });
 
+/** A YYYY-MM-DD date shifted by whole days (UTC). */
+export const addDays = (isoDate, days) =>
+  new Date(Date.parse(isoDate) + days * 86_400_000).toISOString().slice(0, 10);
+
 export const todayUtc = (offsetDays = 0) =>
   new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
 

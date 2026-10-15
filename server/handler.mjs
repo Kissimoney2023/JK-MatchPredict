@@ -54,7 +54,17 @@ export function makeHandler(deps) {
       await service.budget('client-' + hash(clientIp(request)), CLIENT_LIMIT, CLIENT_WINDOW_MS);
       const action = url.searchParams.get('action') || 'status';
       const anonymousSid = hash(token);
-      const account = await service.accounts.resolve(authToken);
+      // A database outage must not take the whole page down for signed-in people: the status
+      // call degrades to "signed out" (flagged), while anything that reads or writes their
+      // picks fails loudly instead of silently using the wrong profile.
+      let account = null;
+      let accountError = false;
+      try {
+        account = await service.accounts.resolve(authToken);
+      } catch (e) {
+        if (action !== 'status' || !(e instanceof AppError)) throw e;
+        accountError = true;
+      }
       const sid = account ? 'acct:' + account.id : anonymousSid;
 
       if (request.method === 'GET') {
@@ -62,6 +72,7 @@ export function makeHandler(deps) {
           return json({
             ...service.status(),
             account: account ? {email: account.email, name: account.name} : null,
+            ...(accountError ? {accountError: true} : {}),
           });
         if (action === 'leagues') return json(await service.catalog());
         if (action === 'fixtures') return json(await service.fixtures(url.searchParams));
