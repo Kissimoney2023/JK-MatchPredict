@@ -186,3 +186,31 @@ test('ratingsForecast needs enough matches per team, otherwise defers (null)', (
   );
   assert.equal(f.expectedGoals.length, 2);
 });
+
+test('xgWeight: 0 ignores expected-goals estimates, 1 fits them instead of goals', () => {
+  // Two teams that never score, but whose shots suggest 1.5 expected goals each.
+  const results = Array.from({length: 30}, (_, i) => ({
+    t: NOW - (i + 1) * DAY,
+    home: i % 2 ? 1 : 2,
+    away: i % 2 ? 2 : 1,
+    hg: 0,
+    ag: 0,
+    hx: 1.5,
+    ax: 1.5,
+  }));
+  const total = (options) => {
+    const prediction = predictMatch(fitRatings(results, NOW, options), 1, 2);
+    return prediction.expectedGoals[0] + prediction.expectedGoals[1];
+  };
+  assert.ok(total({xgWeight: 0}) < 0.8, 'goals only: very few goals expected');
+  assert.ok(total({xgWeight: 1}) > 2.4, 'expected-goals target: about three goals in total');
+  assert.ok(
+    total({xgWeight: 0.5}) > total({xgWeight: 0}) && total({xgWeight: 0.5}) < total({xgWeight: 1}),
+  );
+  // Production default is unchanged, and results without estimates are unaffected.
+  assert.equal(total({}), total({xgWeight: 0}));
+  const plain = results.map(({hx, ax, ...rest}) => rest);
+  const a = predictMatch(fitRatings(plain, NOW, {xgWeight: 1}), 1, 2);
+  const b = predictMatch(fitRatings(plain, NOW, {xgWeight: 0}), 1, 2);
+  assert.deepEqual(a, b);
+});

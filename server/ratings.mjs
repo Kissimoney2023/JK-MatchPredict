@@ -11,6 +11,9 @@ export const DEFAULTS = {
   maxGoals: 10,
   minLambda: 0.15,
   maxLambda: 5,
+  // Experimental: weight (0..1) of a shots-based expected-goals estimate (`hx`/`ax` on each
+  // result) blended with the real goals the ratings are fitted to. 0 = goals only.
+  xgWeight: 0,
 };
 
 /** Distinct, valid regulation-time results from raw football-data matches, before `cutoffMs`. */
@@ -44,7 +47,7 @@ export function collectResults(rows, cutoffMs = Infinity) {
  * Matches are weighted by recency; ratings are shrunk toward 0 (the average team).
  */
 export function fitRatings(results, now, options = {}) {
-  const {halfLifeDays, ridge, iterations, damping} = {...DEFAULTS, ...options};
+  const {halfLifeDays, ridge, iterations, damping, xgWeight} = {...DEFAULTS, ...options};
   const decay = Math.LN2 / (halfLifeDays * DAY);
   const index = new Map();
   for (const r of results)
@@ -54,11 +57,14 @@ export function fitRatings(results, now, options = {}) {
   const attack = new Float64Array(n);
   const defence = new Float64Array(n);
   const count = new Float64Array(n);
+  // The fitted target is goals, optionally blended with a per-match expected-goals estimate.
+  const target = (goals, proxy) =>
+    xgWeight > 0 && Number.isFinite(proxy) ? (1 - xgWeight) * goals + xgWeight * proxy : goals;
   const rows = results.map((r) => ({
     h: index.get(r.home),
     a: index.get(r.away),
-    hg: r.hg,
-    ag: r.ag,
+    hg: target(r.hg, r.hx),
+    ag: target(r.ag, r.ax),
     w: Math.exp(-decay * Math.max(0, now - r.t)),
   }));
   for (const m of rows) {

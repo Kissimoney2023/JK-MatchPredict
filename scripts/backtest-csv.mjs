@@ -143,7 +143,22 @@ async function load(league) {
       )
         continue;
       for (const name of [home, away]) if (!ids.has(name)) ids.set(name, ids.size + 1);
-      results.push({t, home: ids.get(home), away: ids.get(away), hg, ag, market: marketOf(get)});
+      const num = (name) => {
+        const v = get(name);
+        return v === undefined || v === '' ? undefined : Number(v);
+      };
+      results.push({
+        t,
+        home: ids.get(home),
+        away: ids.get(away),
+        hg,
+        ag,
+        market: marketOf(get),
+        shotsH: num('HS'),
+        shotsA: num('AS'),
+        sotH: num('HST'),
+        sotA: num('AST'),
+      });
     }
   }
   return results.sort((a, b) => a.t - b.t);
@@ -201,6 +216,81 @@ function run(results, period, options) {
   });
 }
 
+const experiment = flag('experiment', null);
+
+// ---------- experiment: shots-based expected goals ----------
+const hasShots = (r) =>
+  [r.shotsH, r.shotsA, r.sotH, r.sotA].every((v) => Number.isFinite(v)) &&
+  r.sotH <= r.shotsH &&
+  r.sotA <= r.shotsA;
+
+/**
+ * Goals per shot on target and per other shot, by least squares on matches BEFORE `cutoff`
+ * only (no information from the validation or holdout periods).
+ */
+function conversionRates(results, cutoff) {
+  let a = 0,
+    b = 0,
+    c = 0,
+    p = 0,
+    q = 0;
+  for (const r of results) {
+    if (r.t >= cutoff || !hasShots(r)) continue;
+    for (const [sot, shots, goals] of [
+      [r.sotH, r.shotsH, r.hg],
+      [r.sotA, r.shotsA, r.ag],
+    ]) {
+      const x1 = sot;
+      const x2 = shots - sot;
+      a += x1 * x1;
+      b += x1 * x2;
+      c += x2 * x2;
+      p += x1 * goals;
+      q += x2 * goals;
+    }
+  }
+  // "shots-sot" variant: shots on target only (one coefficient, no off-target term).
+  if (experiment === 'shots-sot') return {onTarget: p / a, other: 0};
+  const det = a * c - b * b;
+  return {onTarget: (p * c - q * b) / det, other: (a * q - b * p) / det};
+}
+
+function withExpectedGoals(results, rates) {
+  return results.map((r) =>
+    hasShots(r)
+      ? {
+          ...r,
+          hx: rates.onTarget * r.sotH + rates.other * (r.shotsH - r.sotH),
+          ax: rates.onTarget * r.sotA + rates.other * (r.shotsA - r.sotA),
+        }
+      : r,
+  );
+}
+
+const diffsOf = (report, a, b) =>
+  report.predictions[a].map(
+    (x, i) =>
+      scoreOne(x.p, x.outcome).logLoss -
+      scoreOne(report.predictions[b][i].p, report.predictions[b][i].outcome).logLoss,
+  );
+
+function summarizeDiffs(diffs) {
+  const n = diffs.length;
+  const mean = diffs.reduce((s, v) => s + v, 0) / n;
+  const se = Math.sqrt(diffs.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1) / n);
+  return {n, mean, se};
+}
+
+const aggregate = {
+  n: 0,
+  goals: 0,
+  xg: 0,
+  market: 0,
+  diffXgGoals: [],
+  diffXgMarket: [],
+  diffGoalsMarket: [],
+};
+
 // ---------- main ----------
 const GRID = {halfLifeDays: [60, 120, 180, 365, 730], ridge: [1, 2, 4, 8, 16]};
 
@@ -214,6 +304,60 @@ for (const league of leagues) {
   console.log(`bookmaker closing line available for ${withMarket} of them`);
   if (results.length < 500) {
     console.log('Not enough data; skipping.');
+    continue;
+  }
+
+  if (experiment === 'shots' || experiment === 'shots-sot') {
+    const rates = conversionRates(results, VALIDATION.from);
+    const enriched = withExpectedGoals(results, rates);
+    console.log(
+      `shots coverage: ${enriched.filter((r) => r.hx !== undefined).length} of ${results.length} matches`,
+    );
+    console.log(
+      `goals per shot on target: ${rates.onTarget.toFixed(3)}, per other shot: ${rates.other.toFixed(3)} (estimated before 2024/25)`,
+    );
+    const weights = [0, 0.25, 0.5, 0.75, 1];
+    const validation = weights.map((xgWeight) => {
+      const r = backtest(enriched, {
+        testFrom: VALIDATION.from,
+        testTo: VALIDATION.to,
+        options: {xgWeight},
+      });
+      return {xgWeight, logLoss: r.models.ratings.logLoss};
+    });
+    console.log(
+      'validation 2024/25 log loss by weight:',
+      validation.map((v) => `${v.xgWeight}=${f3(v.logLoss)}`).join('  '),
+    );
+    const bestWeight = [...validation].sort((x, y) => x.logLoss - y.logLoss)[0].xgWeight;
+    const goalsOnly = run(enriched, HOLDOUT, {xgWeight: 0});
+    const blended = run(enriched, HOLDOUT, {xgWeight: bestWeight});
+    const n = goalsOnly.matches;
+    console.log(`HOLDOUT (${n} matches), weight chosen on validation = ${bestWeight}:`);
+    console.log(
+      `  ratings, goals only      log loss ${f3(goalsOnly.models.ratings.logLoss)}  accuracy ${pct(goalsOnly.models.ratings.accuracy)}`,
+    );
+    console.log(
+      `  ratings, goals + shots   log loss ${f3(blended.models.ratings.logLoss)}  accuracy ${pct(blended.models.ratings.accuracy)}`,
+    );
+    console.log(
+      `  bookmaker closing line   log loss ${f3(goalsOnly.models.market.logLoss)}  accuracy ${pct(goalsOnly.models.market.accuracy)}`,
+    );
+    aggregate.n += n;
+    aggregate.goals += goalsOnly.models.ratings.logLoss * n;
+    aggregate.xg += blended.models.ratings.logLoss * n;
+    aggregate.market += goalsOnly.models.market.logLoss * n;
+    // Same matches in both reports, so per-match differences pair up.
+    const both = {
+      predictions: {
+        xg: blended.predictions.ratings,
+        goals: goalsOnly.predictions.ratings,
+        market: goalsOnly.predictions.market,
+      },
+    };
+    aggregate.diffXgGoals.push(...diffsOf(both, 'xg', 'goals'));
+    aggregate.diffXgMarket.push(...diffsOf(both, 'xg', 'market'));
+    aggregate.diffGoalsMarket.push(...diffsOf(both, 'goals', 'market'));
     continue;
   }
 
@@ -284,4 +428,28 @@ for (const league of leagues) {
           : ''),
     );
   }
+}
+
+if ((experiment === 'shots' || experiment === 'shots-sot') && aggregate.n) {
+  console.log('='.repeat(78));
+  console.log(`ALL LEAGUES, holdout (${aggregate.n} matches), log loss (lower is better):`);
+  console.log(`  ratings, goals only     ${f3(aggregate.goals / aggregate.n)}`);
+  console.log(`  ratings, goals + shots  ${f3(aggregate.xg / aggregate.n)}`);
+  console.log(`  bookmaker closing line  ${f3(aggregate.market / aggregate.n)}`);
+  const show = (label, d) => {
+    const x = summarizeDiffs(d);
+    const verdict =
+      x.mean + 1.96 * x.se < 0
+        ? 'first is clearly better'
+        : x.mean - 1.96 * x.se > 0
+          ? 'first is clearly worse'
+          : 'no clear difference';
+    console.log(
+      `  ${label}: ${x.mean >= 0 ? '+' : ''}${f3(x.mean)} per match (±${f3(1.96 * x.se)}, 95%) -> ${verdict}`,
+    );
+  };
+  console.log('Paired differences in log loss per match (negative = first is better):');
+  show('goals+shots minus goals only  ', aggregate.diffXgGoals);
+  show('goals+shots minus bookmaker   ', aggregate.diffXgMarket);
+  show('goals only  minus bookmaker   ', aggregate.diffGoalsMarket);
 }
