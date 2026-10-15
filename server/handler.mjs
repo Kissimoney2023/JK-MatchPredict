@@ -170,6 +170,10 @@ export function makeHandler(deps, env = process.env) {
         if (!account) throw new AppError(401, 'auth_required', 'Sign in to share a public link.');
         return json(await service.shares.disable(account.id));
       }
+      if (body.action === 'push-subscribe')
+        return json(await service.reminders.subscribe(sid, body.subscription));
+      if (body.action === 'push-unsubscribe')
+        return json(await service.reminders.unsubscribe(body.endpoint));
       if (body.action === 'logout') {
         await service.accounts.logout(authToken);
         headers.append('Set-Cookie', `jk_auth=; ${cookieAttributes}; Max-Age=0`);
@@ -215,7 +219,13 @@ export function makePrefetchHandler(deps, env) {
     if (!safeEqual(auth, 'Bearer ' + env.CRON_SECRET))
       return respond({error: 'Unauthorized.'}, 401);
     try {
-      return respond(await deps().prefetch());
+      const service = deps();
+      // Reminders first: they are time-sensitive, and warming the caches can take a while.
+      const reminders = await service.reminders.run().catch((e) => {
+        console.error('reminders failed', e);
+        return {error: 'Reminders failed.'};
+      });
+      return respond({...(await service.prefetch()), reminders});
     } catch (e) {
       console.error('prefetch failed', e);
       return respond({error: 'Prefetch failed.'}, 500);

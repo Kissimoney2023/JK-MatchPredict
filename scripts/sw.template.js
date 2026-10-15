@@ -70,6 +70,36 @@ async function networkFirst(request) {
   }
 }
 
+// Kickoff reminders. The server sends only a title, a short message and a tag; the page that
+// opens is always the app itself, never an address taken from the message.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '');
+  event.waitUntil(
+    self.registration.showNotification(text(data.title, 80) || 'JK MatchPredict', {
+      body: text(data.body, 200),
+      tag: text(data.tag, 80) || undefined,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/favicon-32.png',
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({type: 'window', includeUncontrolled: true}).then((windows) => {
+      const open = windows.find((w) => 'focus' in w);
+      return open ? open.focus() : self.clients.openWindow('/');
+    }),
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   if (isShellRequest(event.request)) event.respondWith(networkFirst(event.request));
 });

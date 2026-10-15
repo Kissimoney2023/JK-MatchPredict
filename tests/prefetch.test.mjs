@@ -163,7 +163,10 @@ test('a provider outage serves the last good fixtures with a notice', async () =
 });
 
 test('prefetch endpoint requires the cron secret', async () => {
-  const deps = () => ({prefetch: async () => ({ok: true})});
+  const deps = () => ({
+    prefetch: async () => ({ok: true}),
+    reminders: {run: async () => ({sent: 0})},
+  });
   const request = (auth) =>
     new Request('https://app.example/api/prefetch', {
       headers: auth ? {authorization: auth} : {},
@@ -175,7 +178,7 @@ test('prefetch endpoint requires the cron secret', async () => {
   assert.equal((await handler(request('Bearer wrong'))).status, 401);
   const ok = await handler(request('Bearer s3cret'));
   assert.equal(ok.status, 200);
-  assert.deepEqual(await ok.json(), {ok: true});
+  assert.deepEqual(await ok.json(), {ok: true, reminders: {sent: 0}});
 });
 
 test('a warmed cache lets the forecast rate teams using the whole fixture list', async () => {

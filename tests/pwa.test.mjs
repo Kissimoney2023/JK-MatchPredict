@@ -100,7 +100,14 @@ function createWorker({online = true} = {}) {
       location: {origin: ORIGIN},
       addEventListener: (type, fn) => (handlers[type] = fn),
       skipWaiting: () => (state.skipped = true),
-      clients: {claim: async () => (state.claimed = true)},
+      clients: {
+        claim: async () => (state.claimed = true),
+        matchAll: async () => state.windows ?? [],
+        openWindow: async (url) => (state.opened = url),
+      },
+      registration: {
+        showNotification: async (title, options) => (state.shown = {title, options}),
+      },
     },
   };
   context.self.fetch = context.fetch;
@@ -215,4 +222,61 @@ test('worker: failed responses are not cached', async () => {
   w.context.self.fetch = w.context.fetch;
   await w.request('/js/broken.js');
   assert.ok(!w.stores.get('jk-shell-test').has('/js/broken.js'));
+});
+
+// ---------- kickoff reminders ----------
+
+async function pushed(w, data, {raw} = {}) {
+  let done;
+  w.handlers.push({
+    data: {json: () => (raw ? JSON.parse(raw) : data)},
+    waitUntil: (p) => (done = p),
+  });
+  await done;
+  return w.state.shown;
+}
+
+test('worker: a push message becomes a notification with only safe fields', async () => {
+  const w = createWorker();
+  const shown = await pushed(w, {
+    title: 'Kickoff soon',
+    body: 'Arsenal vs Chelsea starts in about 30 minutes.',
+    tag: 'kickoff-1',
+    url: 'https://evil.example/',
+  });
+  assert.equal(shown.title, 'Kickoff soon');
+  assert.equal(shown.options.body, 'Arsenal vs Chelsea starts in about 30 minutes.');
+  assert.equal(shown.options.tag, 'kickoff-1');
+  assert.ok(!JSON.stringify(shown).includes('evil.example'), 'addresses in messages are ignored');
+});
+
+test('worker: oversized or malformed push data is trimmed or replaced', async () => {
+  const w = createWorker();
+  const shown = await pushed(w, {title: 'x'.repeat(500), body: 'y'.repeat(900), tag: 42});
+  assert.equal(shown.title.length, 80);
+  assert.equal(shown.options.body.length, 200);
+  assert.equal(shown.options.tag, undefined);
+
+  const bad = createWorker();
+  const fallback = await pushed(bad, null, {raw: '{not json'});
+  assert.equal(fallback.title, 'JK MatchPredict');
+});
+
+test('worker: tapping a notification focuses the open app, or opens it at the home page', async () => {
+  const focused = createWorker();
+  focused.state.windows = [{focus: async () => (focused.state.focused = true)}];
+  let closed = false;
+  let done;
+  focused.handlers.notificationclick({
+    notification: {close: () => (closed = true)},
+    waitUntil: (p) => (done = p),
+  });
+  await done;
+  assert.ok(closed && focused.state.focused);
+  assert.equal(focused.state.opened, undefined);
+
+  const none = createWorker();
+  none.handlers.notificationclick({notification: {close() {}}, waitUntil: (p) => (done = p)});
+  await done;
+  assert.equal(none.state.opened, '/');
 });

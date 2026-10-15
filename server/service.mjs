@@ -12,6 +12,7 @@ import {createPicks} from './service/picks.mjs';
 import {createPrefetch} from './service/prefetch.mjs';
 import {createAccounts} from './service/accounts.mjs';
 import {createPickStore} from './service/pickstore.mjs';
+import {createReminders} from './service/reminders.mjs';
 import {createShares} from './service/shares.mjs';
 import {createSupabase} from './supabase.mjs';
 
@@ -19,7 +20,7 @@ export {AppError} from './errors.mjs';
 export {hash, dates} from './util.mjs';
 
 /** Wires the football service from its parts. All I/O is injected for testability. */
-export function createService({env, store, fetcher = fetch, now = Date.now}) {
+export function createService({env, store, fetcher = fetch, now = Date.now, sendPush}) {
   const storage = createStorage({store, now});
   const provider = createProviderClient({env, store, fetcher, now, storage});
   const {catalog, league} = createCatalog({env, provider});
@@ -74,6 +75,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
   });
   const shares = createShares({supabase, pickStore, storage, now});
   const accounts = createAccounts({env, supabase, storage, now, mergePicks});
+  const reminders = createReminders({env, now, storage, pickStore, send: sendPush});
   const prefetch = createPrefetch({
     env,
     now,
@@ -89,6 +91,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
     connected: !!(env.API_FOOTBALL_KEY || env.FOOTBALL_DATA_ORG_KEY),
     storage: store.kind ?? 'unknown',
     accounts: accounts.info(),
+    push: reminders.info(),
     providers: [
       {name: 'API-Football', configured: !!env.API_FOOTBALL_KEY, role: 'Primary'},
       {name: 'football-data.org', configured: !!env.FOOTBALL_DATA_ORG_KEY, role: 'Fallback'},
@@ -109,6 +112,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now}) {
     deletePick,
     accounts,
     shares,
+    reminders,
     prefetch: prefetch.run,
     budget: storage.budget,
   };

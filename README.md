@@ -13,6 +13,7 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - Forecast source, timestamps, model limitations and missing-data states.
 - Private server-stored virtual picks, frozen at save, accessible through a browser-profile cookie.
 - Installable web app (PWA) with an offline-capable shell; see Install and offline use.
+- Optional kickoff reminders as browser notifications; see Kickoff reminders.
 - Result checking and JSON export. No deposits, wagers, wallets or payments.
 - Explicit demo mode with invented examples, available even before keys are configured.
 
@@ -39,6 +40,7 @@ API_FOOTBALL_DAILY_LIMIT=100
 - `API_FOOTBALL_KEY`: direct API-Football/API-Sports key. A RapidAPI credential is not interchangeable.
 - `FOOTBALL_DATA_ORG_KEY`: football-data.org API token.
 - `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_PUBLISHABLE_KEY`, optional `SITE_URL`: accounts (see Accounts).
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, optional `VAPID_SUBJECT`: kickoff reminders (see Kickoff reminders).
 - `STRIKERAPI_API_KEY`: optional StrikerAPI key (see StrikerAPI above). `STRIKERAPI_MONTHLY_CREDITS`: credit cap, default 450. `STRIKERAPI_MARKET_FORECASTS`: `off` disables market-based forecasts.
 - `CRON_SECRET`: secret for `/api/prefetch` (see Scheduled prefetch). `PREFETCH_COMPETITIONS`: optional competition codes to warm, default `CL`.
 - `API_FOOTBALL_DAILY_LIMIT`: optional daily application budget; default 100. Change it only to match your allowance. Other apps using the same key can consume the provider's quota independently.
@@ -110,6 +112,18 @@ The site is an installable progressive web app: browsers offer "Install" (Chrome
 - The app shell (HTML, scripts, styles, fonts) is network-first: a new deploy reaches people the next time they are online, and the cached copy is only used when the network fails, so an installed app can still open offline. Matches, forecasts and picks need the network and show a clear "You appear to be offline" message instead of stale data.
 - Never cached: `/api/*`, public share pages (`/s/*`), non-GET requests and other origins, so private data is not stored by the worker, and sign-in codes in the address are never written to the cache.
 - The cache name includes a hash of every published file; old caches are deleted when a new worker takes over.
+
+## Kickoff reminders (optional browser notifications)
+
+On the My picks page, "Remind me before kickoff" asks the browser for permission and then sends one notification about 45 minutes before a match you picked (several matches are combined into one message). Only your own pending virtual picks are mentioned; removing a pick, settling it or kickoff passing cancels the reminder. It works in Chrome, Edge, Firefox and Android; on iPhone the site must first be added to the Home Screen.
+
+Setup (the button stays hidden until both keys exist):
+
+1. Generate a key pair once on your computer: `npx web-push generate-vapid-keys`.
+2. In Vercel add `VAPID_PUBLIC_KEY` (the public key), `VAPID_PRIVATE_KEY` (the private key, a secret: server-side only, never committed or pasted in a chat) and optionally `VAPID_SUBJECT` (`mailto:you@example.com`, how push services can reach you). Redeploy.
+3. Reminders are sent by the scheduled job (`/api/prefetch`), which must run often. Vercel's Hobby cron runs once a day, so also set the GitHub repository secrets `SITE_URL` and `CRON_SECRET` described under Scheduled prefetch: the workflow then runs every 15 minutes.
+
+Notes: a subscription is stored in the key-value store (Redis in production; the in-memory fallback forgets it on restart) as the browser's push address and keys, tied to the profile it was made with, and re-linked to your account when you sign in. At most 2000 subscriptions and 5 devices per profile. For safety the server only sends to the browser vendors' push services (Google, Mozilla, Apple, Microsoft); anything else is rejected. A browser that unsubscribes is removed automatically.
 
 ## Pick statistics
 

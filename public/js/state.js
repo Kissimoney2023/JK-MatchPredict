@@ -13,6 +13,7 @@ export const state = {
   showAllLeagues: false,
   storage: '',
   accounts: {enabled: false},
+  push: {enabled: false},
   account: null,
   source: '',
   at: null,

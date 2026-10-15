@@ -11,6 +11,7 @@ import {exportPicks, loadPicks, removePickClick} from './views/picks.js';
 import {loadStandings} from './views/standings.js';
 import {loadInsights} from './views/insights.js';
 import {initShare} from './views/share.js';
+import {initReminders} from './views/reminders.js';
 import {initAccountUi, renderAccount, finishLogin, takeLoginReturn} from './views/account.js';
 
 // ---- Data loading ---------------------------------------------------------
@@ -69,6 +70,7 @@ async function initialize() {
     state.storage = status.storage;
     state.accounts = status.accounts ?? {enabled: false};
     state.account = status.account ?? null;
+    state.push = status.push ?? {enabled: false};
     if (status.accountError)
       message('Could not verify your sign-in right now. Reload the page to try again.');
     renderAccount();
@@ -209,6 +211,7 @@ $('#export').onclick = exportPicks;
 document.addEventListener('click', onButtonClick);
 
 initAccountUi();
+initReminders();
 initShare();
 const returnedFromLogin = takeLoginReturn();
 // Offline shell and installability. A failure here must never affect the app.

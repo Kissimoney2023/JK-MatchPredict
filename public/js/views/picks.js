@@ -4,6 +4,7 @@ import {state} from '../state.js';
 import {run} from '../busy.js';
 import {message} from '../dom.js';
 import {renderPickStats} from './pickstats.js';
+import {renderReminders} from './reminders.js';
 
 /** A pick can be taken back until kickoff, and only while it has no result. */
 const canRemove = (p) => !p.result && Date.parse(p.forecast.kickoff) > Date.now();
@@ -21,6 +22,7 @@ export async function loadPicks() {
   const data = await api('picks');
   state.picks = data.picks;
   renderPickStats(state.picks);
+  renderReminders();
   $('#pick-count').textContent = state.picks.length;
   $('#picks').innerHTML = state.picks.length ? state.picks.map(pickCard).join('') : EMPTY_PICKS;
 }
