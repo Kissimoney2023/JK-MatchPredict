@@ -8,6 +8,7 @@ await rm('dist', {recursive: true, force: true});
 await mkdir('dist', {recursive: true});
 await cp('public', 'dist', {recursive: true});
 await cp('server/analysis.mjs', 'dist/analysis.js');
+await cp('server/pickstats.mjs', 'dist/pickstats.js');
 
 // Self-hosted fonts keep the CSP strict (no third-party font hosts).
 const FONTS = [
@@ -45,7 +46,8 @@ for (const file of await scripts('dist'))
 
 // 4. Sanity-check the published files.
 const html = await readFile('dist/index.html', 'utf8');
-for (const file of ['style.css', 'analysis.js', 'js/main.js']) await access('dist/' + file);
+for (const file of ['style.css', 'analysis.js', 'pickstats.js', 'js/main.js'])
+  await access('dist/' + file);
 if (!html.includes('id="analysis"')) throw Error('Analysis view missing');
 if (!html.includes('/js/main.js')) throw Error('Frontend entry point missing from index.html');
 

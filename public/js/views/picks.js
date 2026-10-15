@@ -1,6 +1,7 @@
 import {api} from '../api.js';
 import {$, esc, formatDate} from '../dom.js';
 import {state} from '../state.js';
+import {renderPickStats} from './pickstats.js';
 
 function pickCard(p) {
   const f = p.forecast;
@@ -14,6 +15,7 @@ const EMPTY_PICKS =
 export async function loadPicks() {
   const data = await api('picks');
   state.picks = data.picks;
+  renderPickStats(state.picks);
   $('#pick-count').textContent = state.picks.length;
   $('#picks').innerHTML = state.picks.length ? state.picks.map(pickCard).join('') : EMPTY_PICKS;
 }

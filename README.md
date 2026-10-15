@@ -93,6 +93,17 @@ OAuth with PKCE, done on the server so no Supabase key ever reaches the browser.
 
 Stored per person: GitHub user id, email, display name, avatar URL, last sign-in and their picks. No passwords. Limits: 30 sign-in starts per client address per hour. Only GitHub is enabled; Google can be added later with another provider switch plus a small UI change.
 
+## Pick statistics
+
+**My picks** opens with a results dashboard (computed in the browser from the person's picks, anonymous or signed in; `server/pickstats.mjs` is published as `/pickstats.js` and unit-tested):
+
+- **Accuracy** with a 95% Wilson interval, so small samples are not over-read (fewer than 20 settled picks shows a warning). Void (cancelled) and pending picks never count.
+- **Record, current run and best run**, ordered by match date, plus the last ten results.
+- **Versus forecasts:** correct picks against the number expected from the forecasts' own probabilities (a simple luck-versus-skill check).
+- **Breakdowns** by forecast confidence (what the forecast said against what you got), by competition and by kind of pick, and how backing the forecast's favourite compares with going against it.
+
+These describe a person's picks only; they are not a measure of the forecasts' accuracy (use `scripts/backtest.mjs` for that).
+
 ## StrikerAPI (optional enrichment)
 
 Set `STRIKERAPI_API_KEY` (free key: 500 credits a month at https://strikerapi.com/signup) to add:
@@ -173,6 +184,7 @@ Cache and quota updates use Redis with atomic compare-and-set writes. Cache, quo
 - `server/service/prefetch.mjs` (budgeted cache warm-up), `history.mjs` (team match history) and `standings.mjs`; `api/prefetch.mjs` is the endpoint.
 - `server/service/accounts.mjs` (Supabase Auth GitHub sign-in with PKCE and sessions), `server/supabase.mjs` (REST client), `server/service/pickstore.mjs` (picks in the key-value store for browsers, in Supabase for accounts); `server/handler.mjs` adds the login routes and cookies; `supabase/schema.sql` creates the tables.
 - `server/strikerapi.mjs` (odds conversion, Shin devig, name matching, Elo maths) and `server/service/strikerapi.mjs` (cached StrikerAPI lookups).
+- `server/pickstats.mjs`: pick accuracy statistics (also published to the browser).
 - `server/form.mjs` (recent form and head-to-head from raw histories) and `server/service/insights.mjs`.
 - `server/model.mjs`: normalization and experimental goal model.
 - `server/analysis.mjs`: outcome summaries and probability-based tips. Shared with the browser; `npm run build` publishes it as `/analysis.js`.
