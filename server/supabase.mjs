@@ -9,6 +9,34 @@ function withoutTrailingSlashes(url) {
 }
 
 /**
+ * Plain-language reason a sign-in (Auth) call was refused, from Supabase's own error code.
+ * Only short, safe codes are echoed back; secrets and long messages never are.
+ */
+export function authFailure(status, bodyText) {
+  let body = null;
+  try {
+    body = JSON.parse(bodyText);
+  } catch {
+    // not JSON: classify by status alone
+  }
+  const code = String(body?.error_code || body?.code || body?.error || '')
+    .toLowerCase()
+    .slice(0, 60);
+  const words =
+    `${code} ${body?.msg ?? ''} ${body?.message ?? ''} ${body?.error_description ?? ''} ${bodyText}`.toLowerCase();
+  const start = 'Sign-in could not be completed';
+
+  if (status === 401 || status === 403 || /api key|apikey|invalid jwt|jwt/.test(words))
+    return `${start}: Supabase rejected this site's API key. If you run this site, check the Supabase keys in Vercel (SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY).`;
+  if (status === 429 || /rate_limit|too many/.test(words))
+    return `${start}: too many attempts. Wait a minute and try again.`;
+  if (/flow_state|code_verifier|invalid_grant|auth.?code|expired|not.?found/.test(words))
+    return `${start}: that attempt expired or was already used. Please press the sign-in button again.`;
+  const safe = /^[a-z0-9_-]{1,40}$/.test(code) ? ` (Supabase says: ${code})` : '';
+  return `${start}${safe}. Please try again.`;
+}
+
+/**
  * Minimal Supabase client over fetch (no SDK): PostgREST tables and the Auth PKCE endpoints.
  * `key` is the server-only secret key (sb_secret_..., or the legacy service_role JWT): it
  * bypasses Row Level Security and must never reach a browser. `authKey` (the publishable key)
@@ -43,7 +71,7 @@ export function createSupabase({url, key, authKey, fetcher}) {
       const detail = (await response.text().catch(() => '')).slice(0, 200);
       console.warn(`[supabase] HTTP ${response.status} ${method} ${path}: ${detail}`);
       if (authCall && response.status < 500)
-        throw new AppError(400, 'auth', 'Sign-in could not be completed. Please try again.');
+        throw new AppError(400, 'auth', authFailure(response.status, detail));
       throw new AppError(502, 'database', 'The database is temporarily unavailable.');
     }
     const text = await response.text();
