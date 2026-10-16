@@ -8,6 +8,7 @@ import {analyze} from '../server/analysis.mjs';
 
 const base = Date.parse('2026-10-14T10:00:00Z');
 const HOUR = 3_600_000;
+const MIN = 60_000;
 
 const fx = (key, league, hoursAhead, extra = {}) => ({
   key,
@@ -26,7 +27,7 @@ const record = (p) => {
   return {...f, analysis: analyze(f)};
 };
 
-function setup({fixtureDays, forecasts, env = {}}) {
+function setup({fixtureDays, forecasts, env = {}, gate}) {
   let clock = base;
   const store = createMemoryStore();
   const storage = createStorage({store, now: () => clock});
@@ -43,6 +44,7 @@ function setup({fixtureDays, forecasts, env = {}}) {
     },
     forecast: async (key) => {
       calls.forecasts.push(key);
+      if (gate) await gate; // lets a test hold a computation open
       const result = forecasts[key];
       if (!result) throw new Error('no forecast');
       return result;
@@ -53,33 +55,41 @@ function setup({fixtureDays, forecasts, env = {}}) {
 
 const TODAY = '2026-10-14';
 const TOMORROW = '2026-10-15';
+const keys = (result) => result.picks.map((p) => p.key);
 
-test('the clearest favourite among the main competitions is chosen', async () => {
+test('the three clearest winners are chosen, best first', async () => {
   const x = setup({
     fixtureDays: {
-      [TODAY]: [fx('a', 'PL', 5), fx('b', 'PD', 6), fx('c', 'CL', 8)],
+      [TODAY]: [fx('a', 'PL', 5), fx('b', 'PD', 6), fx('c', 'CL', 8), fx('d', 'SA', 9)],
     },
-    forecasts: {a: record([55, 25, 20]), b: record([72, 18, 10]), c: record([48, 27, 25])},
-  });
-  const result = await x.potd.refresh();
-  assert.equal(result.stored, true);
-  const {pick, checked, candidates} = await x.potd.current();
-  assert.equal(pick.key, 'b');
-  assert.equal(pick.probability, 72);
-  assert.equal(pick.predictedOutcome, 'Home win');
-  assert.equal(pick.listingId, 'listing-' + TODAY);
-  assert.equal(pick.home, 'Hb');
-  assert.equal(checked, 3);
-  assert.equal(candidates, 3);
-});
-
-test('matches with no clear favourite are never the pick', async () => {
-  const x = setup({
-    fixtureDays: {[TODAY]: [fx('a', 'PL', 5), fx('b', 'PD', 6)]},
-    forecasts: {a: record([36, 32, 32]), b: record([40, 30, 30])},
+    forecasts: {
+      a: record([55, 25, 20]),
+      b: record([72, 18, 10]),
+      c: record([48, 27, 25]),
+      d: record([10, 20, 70]), // an away win counts as a winner too
+    },
   });
   await x.potd.refresh();
-  assert.deepEqual(await x.potd.current(), {pick: null});
+  const result = await x.potd.current();
+  assert.deepEqual(keys(result), ['b', 'd', 'a']);
+  assert.equal(result.picks[0].probability, 72);
+  assert.equal(result.picks[0].predictedOutcome, 'Home win');
+  assert.equal(result.picks[1].predictedOutcome, 'Away win');
+  assert.equal(result.picks[0].listingId, 'listing-' + TODAY);
+  assert.equal(result.checked, 4);
+});
+
+test('draws and matches with no clear favourite are never picked', async () => {
+  const x = setup({
+    fixtureDays: {[TODAY]: [fx('draw', 'PL', 3), fx('tight', 'PD', 4), fx('ok', 'SA', 5)]},
+    forecasts: {
+      draw: record([20, 50, 30]), // a clear draw favourite is still not a winner pick
+      tight: record([40, 30, 30]),
+      ok: record([58, 24, 18]),
+    },
+  });
+  await x.potd.refresh();
+  assert.deepEqual(keys(await x.potd.current()), ['ok']);
 });
 
 test('only open matches in the chosen competitions starting soon are considered', async () => {
@@ -104,7 +114,7 @@ test('only open matches in the chosen competitions starting soon are considered'
   });
   await x.potd.refresh();
   assert.deepEqual(x.calls.forecasts.sort(), ['near', 'ok']);
-  assert.equal((await x.potd.current()).pick.key, 'near');
+  assert.deepEqual(keys(await x.potd.current()), ['near', 'ok']);
 });
 
 test('the competitions are configurable and ordered by importance', async () => {
@@ -124,25 +134,29 @@ test('forecasts are limited, and a failing forecast only removes that match', as
   const x = setup({fixtureDays: {[TODAY]: many}, forecasts});
   await x.potd.refresh();
   assert.equal(x.calls.forecasts.length, 8, 'at most eight forecasts are requested');
-  const stored = await x.store.get('potd/current', {type: 'json'});
-  assert.ok(stored.picks.length <= 3);
-  assert.equal((await x.potd.current()).pick.key, 'm7', 'the best of the checked ones');
+  assert.deepEqual(
+    keys(await x.potd.current()),
+    ['m7', 'm6', 'm5'],
+    'the best of the checked ones',
+  );
 });
 
-test('when the pick has started the next one is shown; nothing once all have', async () => {
+test('picks that kicked off drop out and the rest stay', async () => {
   const x = setup({
-    fixtureDays: {[TODAY]: [fx('first', 'PL', 2), fx('second', 'PL', 6)]},
-    forecasts: {first: record([70, 20, 10]), second: record([62, 22, 16])},
+    fixtureDays: {[TODAY]: [fx('first', 'PL', 2), fx('second', 'PL', 6), fx('third', 'PL', 8)]},
+    forecasts: {
+      first: record([70, 20, 10]),
+      second: record([62, 22, 16]),
+      third: record([58, 24, 18]),
+    },
   });
   await x.potd.refresh();
-  assert.equal((await x.potd.current()).pick.key, 'first');
+  assert.deepEqual(keys(await x.potd.current()), ['first', 'second', 'third']);
   x.advance(3 * HOUR);
-  assert.equal((await x.potd.current()).pick.key, 'second');
-  x.advance(4 * HOUR);
-  assert.deepEqual(await x.potd.current(), {pick: null});
+  assert.deepEqual(keys(await x.potd.current()), ['second', 'third']);
 });
 
-test('a result is not recomputed within six hours, and old results are not shown', async () => {
+test('a scheduled result is not recomputed within six hours, and force recomputes', async () => {
   const x = setup({
     fixtureDays: {[TODAY]: [fx('a', 'PL', 20)], [TOMORROW]: []},
     forecasts: {a: record([70, 20, 10])},
@@ -153,10 +167,7 @@ test('a result is not recomputed within six hours, and old results are not shown
   assert.deepEqual(await x.potd.refresh(), {skipped: true});
   assert.equal(x.calls.forecasts.length, before);
   await x.potd.refresh({force: true});
-  assert.ok(x.calls.forecasts.length > before, 'force recomputes');
-
-  x.advance(31 * HOUR);
-  assert.deepEqual(await x.potd.current(), {pick: null}, 'a day-old result is hidden');
+  assert.ok(x.calls.forecasts.length > before);
 });
 
 test('a failed run keeps the previous result and never throws', async () => {
@@ -165,22 +176,71 @@ test('a failed run keeps the previous result and never throws', async () => {
     forecasts: {a: record([70, 20, 10])},
   });
   await x.potd.refresh();
-  x.advance(7 * HOUR);
-  // Everything fails this time: the providers are down.
   const down = setup({
     fixtureDays: {[TODAY]: new Error('down'), [TOMORROW]: new Error('down')},
     forecasts: {},
   });
-  const result = await down.potd.refresh();
-  assert.equal(result.stored, false);
-  assert.deepEqual(await down.potd.current(), {pick: null});
-  assert.equal((await x.potd.current()).pick.key, 'a');
+  assert.equal((await down.potd.refresh()).stored, false);
+  assert.equal((await down.potd.current()).picks.length, 0);
+  assert.deepEqual(keys(await x.potd.current()), ['a']);
 });
 
-test('the app exposes the stored pick, without any provider request', async () => {
+// ---------- the first visit, before the scheduled job has run ----------
+
+test('with nothing stored, the first visit works the picks out so the card is not empty', async () => {
   const x = setup({
+    fixtureDays: {[TODAY]: [fx('a', 'PL', 5), fx('b', 'PD', 6)]},
+    forecasts: {a: record([60, 25, 15]), b: record([66, 20, 14])},
+  });
+  const first = await x.potd.current();
+  assert.deepEqual(keys(first), ['b', 'a']);
+  const calls = x.calls.forecasts.length;
+  assert.deepEqual(keys(await x.potd.current()), ['b', 'a']);
+  assert.equal(x.calls.forecasts.length, calls, 'the second visit only reads');
+});
+
+test('simultaneous first visits trigger one computation; the others are told it is under way', async () => {
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  const x = setup({
+    gate,
     fixtureDays: {[TODAY]: [fx('a', 'PL', 5)]},
-    forecasts: {a: record([68, 20, 12])},
+    forecasts: {a: record([62, 22, 16])},
+  });
+  const first = x.potd.current(); // starts computing and waits on the gate
+  await new Promise((r) => setTimeout(r, 20));
+  const second = await x.potd.current();
+  assert.deepEqual(second, {picks: [], pending: true});
+  release();
+  assert.deepEqual(keys(await first), ['a']);
+  assert.equal(x.calls.forecasts.length, 1, 'one computation only');
+  assert.deepEqual(keys(await x.potd.current()), ['a']);
+});
+
+test('when nothing qualifies, visitors do not keep triggering lookups', async () => {
+  const x = setup({
+    fixtureDays: {[TODAY]: [fx('a', 'PL', 5), fx('b', 'PD', 6)]},
+    forecasts: {a: record([38, 31, 31]), b: record([36, 32, 32])},
+  });
+  assert.deepEqual(await x.potd.current(), {picks: [], pending: false});
+  const calls = x.calls.forecasts.length;
+  x.advance(30 * MIN);
+  assert.deepEqual(await x.potd.current(), {picks: [], pending: false});
+  assert.equal(x.calls.forecasts.length, calls, 'nothing qualified a moment ago: no new lookups');
+});
+
+test('with no data source at all, nothing is shown and nothing breaks', async () => {
+  const x = setup({
+    fixtureDays: {[TODAY]: new Error('no key'), [TOMORROW]: new Error('no key')},
+    forecasts: {},
+  });
+  assert.deepEqual(await x.potd.current(), {picks: [], pending: false});
+});
+
+test('the app exposes the stored picks', async () => {
+  const x = setup({
+    fixtureDays: {[TODAY]: [fx('a', 'PL', 5), fx('b', 'PD', 6)]},
+    forecasts: {a: record([68, 20, 12]), b: record([61, 24, 15])},
   });
   await x.potd.refresh();
   const handler = makeHandler(() => ({
@@ -191,32 +251,51 @@ test('the app exposes the stored pick, without any provider request', async () =
   const response = await handler(new Request('https://app.example/api/football?action=potd'));
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.equal(body.pick.key, 'a');
-  assert.equal(body.pick.probability, 68);
-  assert.equal(x.calls.forecasts.length, 1, 'only the scheduled computation called the provider');
+  assert.deepEqual(keys(body), ['a', 'b']);
+  assert.equal(body.picks[0].probability, 68);
+  assert.equal(x.calls.forecasts.length, 2, 'only the scheduled computation called the provider');
 });
 
-test('the dashboard card escapes team names and shows the caveats', async () => {
-  const {potdCard} = await import('../public/js/views/potd.js');
-  const html = potdCard({
+// ---------- the dashboard card ----------
+
+const sample = (overrides = {}) => ({
+  key: 'ap:1',
+  listingId: 'a'.repeat(64),
+  home: 'Arsenal',
+  away: 'Chelsea',
+  competition: 'League',
+  kickoff: '2026-10-20T19:00:00Z',
+  predictedOutcome: 'Arsenal win',
+  probability: 71.6,
+  source: 'API-Football',
+  ...overrides,
+});
+
+test('the card shows up to three picks, escaped, with the caveats', async () => {
+  const {potdCards} = await import('../public/js/views/potd.js');
+  const html = potdCards({
     checked: 5,
-    pick: {
-      key: 'ap:1',
-      listingId: 'a'.repeat(64),
-      home: '<img src=x onerror=alert(1)>',
-      away: 'B"&C',
-      competition: 'League',
-      kickoff: '2026-10-20T19:00:00Z',
-      predictedOutcome: 'Home win',
-      probability: 71.6,
-      source: 'API-Football',
-    },
+    picks: [
+      sample({key: 'ap:1', home: '<img src=x onerror=alert(1)>', away: 'B"&C'}),
+      sample({key: 'ap:2'}),
+      sample({key: 'ap:3'}),
+      sample({key: 'ap:4'}), // a fourth is never shown
+    ],
   });
   assert.ok(!html.includes('<img src=x'), 'markup in names is escaped');
   assert.match(html, /&lt;img src=x/);
+  assert.equal(html.match(/class="potd-pick"/g).length, 3);
+  assert.match(html, /Top 3 picks to win today/);
   assert.match(html, /72%/);
   assert.match(html, /among 5 matches checked/);
-  assert.match(html, /not a certainty/);
+  assert.match(html, /not certainties/);
   assert.match(html, /not betting advice/);
   assert.match(html, /data-analyze="ap:1" data-listing="a{64}"/);
+  assert.ok(!html.includes('ap:4'));
+});
+
+test('the card title follows the number of picks', async () => {
+  const {potdCards} = await import('../public/js/views/potd.js');
+  assert.match(potdCards({checked: 1, picks: [sample()]}), /Top pick to win today/);
+  assert.match(potdCards({checked: 3, picks: [sample(), sample({key: 'ap:2'})]}), /Top 2 picks/);
 });

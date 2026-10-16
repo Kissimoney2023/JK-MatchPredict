@@ -2,18 +2,18 @@ import {api} from '../api.js';
 import {$, esc, formatDate} from '../dom.js';
 import {state} from '../state.js';
 
-/** The card's markup for one stored pick (everything is escaped; numbers are numbers). */
-export function potdCard(data) {
-  const p = data.pick;
+const RETRY_MS = 8000;
+const MAX_RETRIES = 4;
+
+const WORDS = ['', 'Top pick', 'Top 2 picks', 'Top 3 picks'];
+
+/** One pick: rank, match, the forecast winner with its probability, and the way in. */
+function pickCard(p, rank) {
   const chance = Math.round(Number(p.probability));
-  const scope =
-    data.checked > 1
-      ? `Highest forecast probability among ${data.checked} matches checked in the main competitions.`
-      : 'The clearest forecast among today’s matches in the main competitions.';
-  return `<div class="potd-body">
-    <div>
-      <div class="eyebrow">PICK OF THE DAY</div>
-      <h2>${esc(p.home)} vs ${esc(p.away)}</h2>
+  return `<article class="potd-pick">
+    <span class="potd-rank" aria-hidden="true">${rank}</span>
+    <div class="potd-match">
+      <h3>${esc(p.home)} vs ${esc(p.away)}</h3>
       <p class="muted">${esc(p.competition)} · ${esc(formatDate(p.kickoff))}</p>
     </div>
     <div class="potd-forecast">
@@ -21,19 +21,47 @@ export function potdCard(data) {
       <strong class="number">${chance}%</strong>
       <progress max="100" value="${chance}" aria-label="Forecast probability ${chance}%">${chance}%</progress>
     </div>
-  </div>
-  <p class="muted">${esc(scope)} A probability, not a certainty: even a 70% favourite fails three times in ten. Source: ${esc(p.source)}. Virtual picks only; not betting advice.</p>
-  <button class="primary" data-analyze="${esc(p.key)}" data-listing="${esc(p.listingId)}">View analysis &amp; make a pick</button>`;
+    <button class="secondary" data-analyze="${esc(p.key)}" data-listing="${esc(p.listingId)}">Analyse &amp; pick</button>
+  </article>`;
 }
 
-/** Fills the dashboard card, or leaves it hidden when there is no pick. Never shows an error. */
-export async function loadPotd() {
+/** The card for one to three stored picks (everything is escaped; numbers are numbers). */
+export function potdCards(data) {
+  const picks = data.picks.slice(0, 3);
+  const scope =
+    data.checked > 1
+      ? `Ranked by forecast probability among ${data.checked} matches checked in the main competitions.`
+      : 'The clearest forecasts among today’s matches in the main competitions.';
+  return `<div class="eyebrow">PICKS OF THE DAY</div>
+  <h2>${WORDS[picks.length]} to win today</h2>
+  <div class="potd-grid">${picks.map((p, i) => pickCard(p, i + 1)).join('')}</div>
+  <p class="muted">${esc(scope)} Probabilities, not certainties: even a 70% favourite fails three times in ten. Virtual picks only; not betting advice.</p>`;
+}
+
+const PENDING =
+  '<div class="eyebrow">PICKS OF THE DAY</div><p class="muted">Working out today’s strongest forecasts…</p>';
+
+/**
+ * Fills the dashboard card, or leaves it hidden when there are no picks. While the very first
+ * computation is under way it shows a short note and looks again a few times. Never shows an
+ * error: this card is an extra.
+ */
+export async function loadPotd(attempt = 0) {
   const box = $('#potd');
   if (!box || state.demo) return;
   try {
     const data = await api('potd');
-    box.classList.toggle('hidden', !data.pick);
-    box.innerHTML = data.pick ? potdCard(data) : '';
+    if (data.picks?.length) {
+      box.classList.remove('hidden');
+      box.innerHTML = potdCards(data);
+    } else if (data.pending && attempt < MAX_RETRIES) {
+      box.classList.remove('hidden');
+      box.innerHTML = PENDING;
+      setTimeout(() => loadPotd(attempt + 1), RETRY_MS);
+    } else {
+      box.classList.add('hidden');
+      box.innerHTML = '';
+    }
   } catch {
     box.classList.add('hidden');
     box.innerHTML = '';

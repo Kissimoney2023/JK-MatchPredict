@@ -30,6 +30,9 @@
     }
   ],
   "functions": {
+    "api/football.mjs": {
+      "maxDuration": 30
+    },
     "api/prefetch.mjs": {
       "maxDuration": 60
     }

@@ -3,18 +3,25 @@ import {todayIso} from '../util.mjs';
 const DEFAULT_COMPETITIONS = 'CL,PL,PD,BL1,SA,FL1';
 const LOOKAHEAD_MS = 36 * 3_600_000; // matches starting within this long are candidates
 const MAX_FORECASTS = 8; // forecasts cost provider requests, so only the first few candidates
-const KEEP = 3; // best picks stored, so a second is ready when the first kicks off
-const REFRESH_MS = 6 * 3_600_000; // do not recompute more often than this
+const KEEP = 3; // the dashboard shows the three clearest winners
+const REFRESH_MS = 6 * 3_600_000; // the scheduled job does not recompute more often than this
 const MAX_AGE_MS = 30 * 3_600_000; // a stored result older than this is not shown
 const TIME_BUDGET_MS = 25_000; // the scheduled job has 60 seconds; leave room for the rest
+const LAZY_FORECASTS = 5; // a visitor-triggered run is smaller and quicker
+const LAZY_BUDGET_MS = 8_000;
+const LAZY_WINDOW_MS = 20 * 60_000; // at most one visitor-triggered run per window, site-wide
 const KEY = 'potd/current';
+const ATTEMPT = 'potd/attempt';
 
 /**
- * "Pick of the day": the upcoming match in the main competitions whose forecast has the
- * clearest favourite. It is chosen by the scheduled job and stored; visitors only read the
- * stored result, so showing it costs no provider requests. "Clearest" means the highest
- * probability for one outcome among forecasts that clear the app's own bar for separation
- * (not "Low separation"); it is a probability, not a recommendation to bet.
+ * "Picks of the day": the upcoming matches in the main competitions whose forecast has the
+ * clearest winner. The three with the highest probability for a home or away win (draws are not
+ * winners) among forecasts that clear the app's own bar for separation ("not Low separation")
+ * are stored and shown. These are probabilities, not recommendations to bet.
+ *
+ * The scheduled job computes them with the full budget. If nothing is stored when someone
+ * opens the page (the job has not run yet), one visitor per 20 minutes triggers a smaller run
+ * so the dashboard is not empty; everyone else just reads the stored result.
  */
 export function createPickOfTheDay({env, now, storage, fixtures, forecast}) {
   const {read, atomic} = storage;
@@ -68,22 +75,24 @@ export function createPickOfTheDay({env, now, storage, fixtures, forecast}) {
     source: record.source,
   });
 
-  /** Chooses and stores today's picks. Never throws; a failed run keeps the previous result. */
-  async function compute() {
+  /** Chooses and stores the picks. Never throws; a failed run keeps the previous result. */
+  async function compute({maxForecasts = MAX_FORECASTS, timeBudget = TIME_BUDGET_MS} = {}) {
     const started = now();
     const codes = competitions();
     const pool = await candidates(codes);
     const chosen = [];
     let checked = 0;
-    for (const {fixture, listingId} of pool.slice(0, MAX_FORECASTS)) {
-      if (now() - started > TIME_BUDGET_MS) break;
+    for (const {fixture, listingId} of pool.slice(0, maxForecasts)) {
+      if (now() - started > timeBudget) break;
       try {
         const record = await forecast(fixture.key, listingId);
         checked++;
-        if (record?.analysis && record.analysis.strength !== 'Low separation')
+        const a = record?.analysis;
+        // A winner pick: a clear favourite that is one of the teams, not a draw.
+        if (a && a.strength !== 'Low separation' && a.outcomeIndex !== 1)
           chosen.push(summary(fixture, listingId, record));
       } catch {
-        // No forecast for this match (no history, no odds): it simply cannot be the pick.
+        // No forecast for this match (no history, no odds): it simply cannot be a pick.
       }
     }
     if (!pool.length || !checked) return {candidates: pool.length, checked, stored: false};
@@ -95,7 +104,12 @@ export function createPickOfTheDay({env, now, storage, fixtures, forecast}) {
       checked,
       picks: chosen.slice(0, KEEP),
     }));
-    return {candidates: pool.length, checked, stored: true, picked: chosen[0]?.key ?? null};
+    return {
+      candidates: pool.length,
+      checked,
+      stored: true,
+      picked: chosen.slice(0, KEEP).map((p) => p.key),
+    };
   }
 
   /** Recomputes unless a recent result exists (the scheduled job calls this every run). */
@@ -110,20 +124,68 @@ export function createPickOfTheDay({env, now, storage, fixtures, forecast}) {
     }
   }
 
-  /** What the dashboard shows: the best stored pick that has not kicked off yet, or null. */
+  const openPicks = (stored) =>
+    stored && now() - stored.computedAt <= MAX_AGE_MS
+      ? (stored.picks ?? []).filter((p) => Date.parse(p.kickoff) > now())
+      : [];
+
+  /**
+   * Takes the right to run one visitor-triggered computation, if nobody has in the last 20
+   * minutes. Returns true for exactly one caller per window.
+   */
+  async function claimLazyRun() {
+    const claimed = await atomic(ATTEMPT, (old) =>
+      old && now() - old.at < LAZY_WINDOW_MS ? undefined : {at: now(), done: false},
+    );
+    return claimed !== null;
+  }
+
+  /**
+   * What the dashboard shows: up to three picks that have not kicked off. `pending` tells the
+   * page that a first computation is under way, so it can say so and look again shortly.
+   */
   async function current() {
-    const stored = await read(KEY);
-    const t = now();
-    if (!stored || t - stored.computedAt > MAX_AGE_MS) return {pick: null};
-    const pick = (stored.picks ?? []).find((p) => Date.parse(p.kickoff) > t) ?? null;
-    return pick
-      ? {
-          pick,
-          checked: stored.checked,
-          candidates: stored.candidates,
-          computedAt: stored.computedAt,
+    const before = await read(KEY);
+    let picks = openPicks(before);
+    let pending = false;
+    // Nothing worked out recently that qualified: do not spend requests looking again.
+    const nothingQualified =
+      before && now() - before.computedAt < REFRESH_MS && !(before.picks ?? []).length;
+
+    if (!picks.length && !nothingQualified) {
+      try {
+        if (await claimLazyRun()) {
+          try {
+            await compute({maxForecasts: LAZY_FORECASTS, timeBudget: LAZY_BUDGET_MS});
+          } finally {
+            await atomic(ATTEMPT, (old) => ({...(old ?? {at: now()}), done: true}));
+          }
         }
-      : {pick: null};
+      } catch (e) {
+        console.error('pick of the day (first run) failed', e?.message ?? e);
+      }
+      const after = await read(KEY);
+      picks = openPicks(after);
+      const attempt = await read(ATTEMPT);
+      pending = !picks.length && !!attempt && !attempt.done;
+      if (picks.length)
+        return {
+          picks,
+          checked: after.checked,
+          candidates: after.candidates,
+          computedAt: after.computedAt,
+        };
+      return {picks: [], pending};
+    }
+
+    return picks.length
+      ? {
+          picks,
+          checked: before.checked,
+          candidates: before.candidates,
+          computedAt: before.computedAt,
+        }
+      : {picks: [], pending: false};
   }
 
   return {current, refresh};

@@ -1580,7 +1580,7 @@ progress::-moz-progress-bar {
   border-top: 3px dashed var(--muted);
 }
 
-/* ---------- Pick of the day ---------- */
+/* ---------- Picks of the day ---------- */
 .potd {
   margin: var(--space-4) 0;
   padding: var(--space-5);
@@ -1588,18 +1588,48 @@ progress::-moz-progress-bar {
   border-radius: var(--radius);
   background: linear-gradient(135deg, var(--accent-soft), var(--surface));
 }
-.potd-body {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
 .potd h2 {
-  margin: var(--space-1) 0;
+  margin: var(--space-1) 0 var(--space-4);
+}
+.potd-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.potd-pick {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.potd-rank {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  font: 600 13px var(--font-mono);
+}
+.potd-match h3 {
+  margin: 0 var(--space-5) var(--space-1) 0;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.potd-match p {
+  margin: 0;
 }
 .potd-forecast {
-  min-width: 220px;
   display: grid;
   gap: var(--space-2);
 }
@@ -1607,9 +1637,14 @@ progress::-moz-progress-bar {
   font-weight: 600;
 }
 .potd-forecast .number {
-  font: 600 40px var(--font-mono);
+  font: 600 32px var(--font-mono);
   color: var(--accent);
 }
-.potd > .primary {
-  margin-top: var(--space-2);
+.potd-pick > button {
+  margin-top: auto;
+}
+@media (max-width: 900px) {
+  .potd-grid {
+    grid-template-columns: 1fr;
+  }
 }
