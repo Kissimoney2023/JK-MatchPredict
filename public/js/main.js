@@ -13,6 +13,7 @@ import {loadInsights} from './views/insights.js';
 import {initShare} from './views/share.js';
 import {initReminders} from './views/reminders.js';
 import {loadPotd} from './views/potd.js';
+import {initDiagnostics} from './views/diagnostics.js';
 import {initAccountUi, renderAccount, finishLogin, takeLoginReturn} from './views/account.js';
 
 // ---- Data loading ---------------------------------------------------------
@@ -216,6 +217,7 @@ document.addEventListener('click', onButtonClick);
 
 initAccountUi();
 initReminders();
+initDiagnostics();
 initShare();
 const returnedFromLogin = takeLoginReturn();
 // Offline shell and installability. A failure here must never affect the app.

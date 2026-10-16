@@ -38,6 +38,8 @@ export function createFakeSupabase() {
   const codes = new Map(); // auth code -> {user, challenge}
   const requests = [];
   let failing = false;
+  const providers = {github: true, google: false};
+  const missing = new Set(); // tables that do not exist yet
 
   /** Simulates the redirect back from GitHub: returns the `code` the browser would receive. */
   function issueCode(user, authorizeUrl) {
@@ -60,6 +62,8 @@ export function createFakeSupabase() {
     if (isAuth ? ![SERVICE_KEY, PUBLISHABLE_KEY].includes(apikey) : apikey !== SERVICE_KEY)
       return Response.json({message: 'bad key'}, {status: 401});
 
+    if (url.pathname === '/auth/v1/settings') return Response.json({external: {...providers}});
+
     if (url.pathname === '/auth/v1/token') {
       const {auth_code: code, code_verifier: verifier} = JSON.parse(opts.body);
       const entry = codes.get(code);
@@ -71,6 +75,8 @@ export function createFakeSupabase() {
 
     const match = url.pathname.match(/^[/]rest[/]v1[/](profiles|sessions|picks|shares)$/);
     if (!match) return Response.json({message: 'not found'}, {status: 404});
+    if (missing.has(match[1]))
+      return Response.json({message: 'relation does not exist'}, {status: 404});
     const table = tables[match[1]];
     const keys = PRIMARY_KEYS[match[1]];
     const prefer = opts.headers?.Prefer ?? '';
@@ -134,5 +140,7 @@ export function createFakeSupabase() {
     requests,
     issueCode,
     setFailing: (value) => (failing = value),
+    providers,
+    dropTable: (name) => missing.add(name),
   };
 }

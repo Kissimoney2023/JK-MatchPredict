@@ -85,6 +85,15 @@ export function makeHandler(deps, env = process.env) {
           });
         if (action === 'leagues') return json(await service.catalog());
         if (action === 'potd') return json(await service.potd.current());
+        if (action === 'diagnostics') {
+          // The report is for the site owner. The CRON_SECRET they already set in Vercel opens it,
+          // so no extra account or setting is needed, and nothing about the setup is public.
+          if (!env.CRON_SECRET) return json({locked: true, reason: 'not_configured'});
+          const auth = request.headers.get('authorization') || '';
+          if (!safeEqual(auth, 'Bearer ' + env.CRON_SECRET))
+            return json({locked: true, reason: 'key'}, 401);
+          return json(await service.diagnostics.run());
+        }
         if (action === 'fixtures') return json(await service.fixtures(url.searchParams));
         if (action === 'insights')
           return json(
@@ -229,7 +238,9 @@ export function makePrefetchHandler(deps, env) {
       const warmed = await service.prefetch();
       // The pick of the day last: it reads the histories and tables that were just warmed.
       const potd = await service.potd.refresh();
-      return respond({...warmed, reminders, potd});
+      const summary = {...warmed, reminders, potd};
+      await service.diagnostics.recordRun(summary); // so the setup check can say when it last ran
+      return respond(summary);
     } catch (e) {
       console.error('prefetch failed', e);
       return respond({error: 'Prefetch failed.'}, 500);

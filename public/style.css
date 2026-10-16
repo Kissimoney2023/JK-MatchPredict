@@ -1648,3 +1648,59 @@ progress::-moz-progress-bar {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Site setup check ---------- */
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.inline-form input {
+  flex: 1 1 260px;
+}
+.diag-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.diag {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.diag p {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+}
+.diag .diag-fix {
+  color: var(--fg-soft);
+}
+.diag-state {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  min-width: 52px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-align: center;
+  font: 600 12px var(--font-mono);
+  background: var(--surface-2);
+}
+.diag-ok .diag-state {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.diag-warn .diag-state {
+  color: #fbbf24;
+  background: rgb(251 191 36 / 0.14);
+}
+.diag-error .diag-state,
+.diag-missing .diag-state {
+  color: #fca5a5;
+  background: rgb(239 68 68 / 0.16);
+}

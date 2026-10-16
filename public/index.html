@@ -191,6 +191,24 @@
           simpler goal-average model is used, and when even that is not possible there is no
           forecast.
         </p>
+        <h3>Site setup check</h3>
+        <p>
+          For whoever runs this site. Enter the CRON_SECRET you set in Vercel to see what is
+          configured and what needs fixing. It is sent only to this site, over HTTPS, and is not
+          stored. Nothing about the setup is shown without it.
+        </p>
+        <form id="diagnostics-form" class="inline-form">
+          <label class="sr" for="diagnostics-key">Setup key (your CRON_SECRET)</label>
+          <input
+            id="diagnostics-key"
+            type="password"
+            autocomplete="off"
+            placeholder="Setup key (your CRON_SECRET)"
+            required
+          />
+          <button type="submit" class="secondary">Run checks</button>
+        </form>
+        <div id="diagnostics-result" role="status"></div>
         <h3>Pick records</h3>
         <p>
           Each pick preserves its original forecast. You can remove a pick until kickoff; after

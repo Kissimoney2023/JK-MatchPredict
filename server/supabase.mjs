@@ -133,6 +133,9 @@ export function createSupabase({url, key, authKey, fetcher}) {
         code_challenge_method: 's256',
       }),
 
+    /** The project's public Auth settings (which providers are on). Needs only the publishable key. */
+    settings: () => call('/auth/v1/settings', {authCall: true}),
+
     /** Exchanges the one-time `code` from the redirect for the signed-in user. */
     exchangeCode: (code, verifier) =>
       call('/auth/v1/token', {

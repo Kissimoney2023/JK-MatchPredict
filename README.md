@@ -147,6 +147,17 @@ Track record: every pick that was shown is remembered once (at most 300 are kept
 
 Settings: `POTD_COMPETITIONS` (football-data.org codes, comma separated, in order of importance; default `CL,PL,PD,BL1,SA,FL1`). Competitions need a fixtures source (API-Football or football-data.org) and a forecast source (the models, or StrikerAPI market lines).
 
+## Site setup check
+
+The "How it works" page ends with a setup check for whoever runs the site. Enter your `CRON_SECRET` (the same value you set in Vercel, used here as the key; it is sent only to your own site and is not stored) and press Run checks. Each line says what is configured, how it stands (OK, Info, Check, Fix) and what to do about it:
+
+- football data keys and the optional StrikerAPI key; whether storage is durable (Redis) or temporary memory;
+- Supabase: the publishable key checked live against your project, whether GitHub (and Google, when listed in `AUTH_PROVIDERS`) is enabled there, whether the four tables from `supabase/schema.sql` are readable, and whether Supabase is reachable at all (free projects pause after inactivity);
+- the scheduled job: whether `CRON_SECRET` is set and when it last ran;
+- reminder keys, the picks of the day, and `SITE_URL`.
+
+It reports only whether things are set and accepted, never a key or any value, and nothing about the setup is shown without the key. If `CRON_SECRET` is not set yet the page says to set it first (the scheduled job needs it too). Results that involve Supabase are reused for two minutes. The report is also available to scripts: `GET /api/football?action=diagnostics` with `Authorization: Bearer <CRON_SECRET>`.
+
 ## Pick statistics
 
 **My picks** opens with a results dashboard (computed in the browser from the person's picks, anonymous or signed in; `server/pickstats.mjs` is published as `/pickstats.js` and unit-tested):

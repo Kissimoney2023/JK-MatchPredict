@@ -167,6 +167,7 @@ test('prefetch endpoint requires the cron secret', async () => {
     prefetch: async () => ({ok: true}),
     reminders: {run: async () => ({sent: 0})},
     potd: {refresh: async () => ({skipped: true})},
+    diagnostics: {recordRun: async () => {}},
   });
   const request = (auth) =>
     new Request('https://app.example/api/prefetch', {
