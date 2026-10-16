@@ -1,5 +1,5 @@
 import {AppError} from '../errors.mjs';
-import {headToHead, recentForm} from '../form.mjs';
+import {goalRates, headToHead, recentForm, teamStats} from '../form.mjs';
 
 const FORM_GAMES = 5;
 const teamIdsOf = (items) => [
@@ -48,8 +48,19 @@ export function createInsights({env, now, storage, history, lookup, strikerApi})
     }
     const h = await history(target.homeTeamId);
     const a = await history(target.awayTeamId);
-    const rows = [...(h.body.matches ?? []), ...(a.body.matches ?? [])];
+    const homeRows = h.body.matches ?? [];
+    const awayRows = a.body.matches ?? [];
+    const rows = [...homeRows, ...awayRows];
+    const side = (teamRows, id, venue) => ({
+      overall: teamStats(teamRows, id, now()),
+      venue: teamStats(teamRows, id, now(), {venue}),
+    });
     return {
+      stats: {
+        home: side(homeRows, target.homeTeamId, 'home'),
+        away: side(awayRows, target.awayTeamId, 'away'),
+        goals: goalRates(homeRows, target.homeTeamId, awayRows, target.awayTeamId, now()),
+      },
       home: {name: known.home, ...recentForm(h.body.matches ?? [], target.homeTeamId, now())},
       away: {name: known.away, ...recentForm(a.body.matches ?? [], target.awayTeamId, now())},
       headToHead: headToHead(rows, target.homeTeamId, target.awayTeamId, now()),

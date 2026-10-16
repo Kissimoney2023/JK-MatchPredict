@@ -56,9 +56,69 @@ function marketBlock(m) {
   return `<p class="muted">Home ${h}% · Draw ${d}% · Away ${a}%${books}, margin removed. Bookmaker prices, shown for comparison only.</p>`;
 }
 
+const pct = (rate) => Math.round(rate * 100);
+const ROWS = [
+  {label: 'Points per game', key: 'ppg', scale: 3, show: (v) => v.toFixed(2)},
+  {label: 'Win rate', key: 'winRate', scale: 1, show: (v) => pct(v) + '%'},
+  {label: 'Goals scored per game', key: 'scored', show: (v) => v.toFixed(2)},
+  {
+    label: 'Goals conceded per game',
+    key: 'conceded',
+    show: (v) => v.toFixed(2),
+    lowerIsBetter: true,
+  },
+  {label: 'Clean sheets', key: 'cleanSheetRate', scale: 1, show: (v) => pct(v) + '%'},
+  {label: 'Both teams scored', key: 'bttsRate', scale: 1, show: (v) => pct(v) + '%'},
+  {label: 'Over 2.5 goals', key: 'over25Rate', scale: 1, show: (v) => pct(v) + '%'},
+];
+
+/** One half of a comparison row: the value and a bar (bars share a scale within a row). */
+function side(stats, row, max) {
+  if (!stats) return '<div class="compare-side"><span class="muted">n/a</span></div>';
+  const v = stats[row.key];
+  return `<div class="compare-side"><strong>${row.show(v)}</strong><progress max="${max}" value="${v}" aria-hidden="true"></progress></div>`;
+}
+
+function comparison(stats, names, venue) {
+  const home = stats.home[venue];
+  const away = stats.away[venue];
+  if (!home && !away) return '<p class="muted">Not enough matches for this view.</p>';
+  const rows = ROWS.map((row) => {
+    const max = row.scale ?? Math.max(home?.[row.key] ?? 0, away?.[row.key] ?? 0, 0.01);
+    return `<div class="compare-row"><span class="compare-label">${esc(row.label)}</span>${side(home, row, max)}${side(away, row, max)}</div>`;
+  }).join('');
+  const basis = (team, s) =>
+    s
+      ? `${esc(team)}: last ${s.played} (${s.wins}W ${s.draws}D ${s.losses}L)`
+      : `${esc(team)}: no matches`;
+  return `<div class="compare-head"><span></span><strong>${esc(names.home)}</strong><strong>${esc(names.away)}</strong></div>${rows}<p class="muted">${basis(names.home, home)} · ${basis(names.away, away)}</p>`;
+}
+
+/** Side-by-side team numbers with an Overall / Home-and-away switch. */
+function statsBlock(stats, names) {
+  if (!stats?.home?.overall && !stats?.away?.overall) return '';
+  return `<h3>Team comparison</h3><div class="compare" data-view="overall"><div class="view-switch" role="group" aria-label="Matches to compare"><button type="button" class="secondary" data-stats-view="overall" aria-pressed="true">Overall</button><button type="button" class="secondary" data-stats-view="venue" aria-pressed="false">${esc(names.home)} at home · ${esc(names.away)} away</button></div><div class="compare-view" data-for="overall">${comparison(stats, names, 'overall')}</div><div class="compare-view" data-for="venue">${comparison(stats, names, 'venue')}</div></div><p class="muted">Completed regulation-time matches from football-data.org (up to ten per team). Small samples swing a lot.</p>`;
+}
+
+/** How often recent matches of the two teams went over each line (observed, not a forecast). */
+function observedGoals(goals) {
+  if (!goals) return '';
+  const lines = goals.lines
+    .map(
+      (l) =>
+        `<div class="goal-line"><span class="goal-name">Goals ${l.line}</span><span>Over <strong>${pct(l.over)}%</strong></span><progress max="100" value="${pct(l.over)}" aria-label="Over ${l.line}: ${pct(l.over)}%">${pct(l.over)}%</progress><span>Under <strong>${pct(l.under)}%</strong></span></div>`,
+    )
+    .join('');
+  return `<h3>Recent goal trends</h3><div class="goal-lines">${lines}<div class="goal-line"><span class="goal-name">Both score</span><span>Yes <strong>${pct(goals.btts)}%</strong></span><progress max="100" value="${pct(goals.btts)}" aria-label="Both teams scored: ${pct(goals.btts)}%">${pct(goals.btts)}%</progress><span>No <strong>${100 - pct(goals.btts)}%</strong></span></div></div><p class="muted">What actually happened across ${goals.matches} recent matches of these two teams. Past frequencies, not a prediction.</p>`;
+}
+
 function render(data) {
   const sections = [];
   const forecast = state.analysis ?? {};
+  if (data.stats) {
+    const names = {home: forecast.home, away: forecast.away};
+    sections.push(statsBlock(data.stats, names), observedGoals(data.stats.goals));
+  }
   if (data.home && data.away)
     sections.push(
       `<h3>Form &amp; head-to-head</h3><div class="insight-grid">${teamColumn(data.home)}${teamColumn(data.away)}</div><h4>Recent meetings</h4>${headToHeadBlock(data)}`,
@@ -73,6 +133,19 @@ function render(data) {
   return sections.join('');
 }
 
+/** Overall / home-and-away switch for the team comparison. */
+function wireStatsSwitch(box) {
+  const compare = box.querySelector('.compare');
+  if (!compare) return;
+  compare.addEventListener('click', (e) => {
+    const button = e.target.closest('[data-stats-view]');
+    if (!button) return;
+    compare.dataset.view = button.dataset.statsView;
+    for (const b of compare.querySelectorAll('[data-stats-view]'))
+      b.setAttribute('aria-pressed', String(b === button));
+  });
+}
+
 /** Fills the optional "form" section of the open analysis dialog. Never blocks the forecast. */
 export async function loadInsights(matchKey) {
   const box = $('#insights');
@@ -80,7 +153,10 @@ export async function loadInsights(matchKey) {
   box.innerHTML = '<p class="muted">Loading recent form…</p>';
   try {
     const data = await api('insights', {key: matchKey, listing: state.listing});
-    if (state.analysis?.key === matchKey) box.innerHTML = render(data);
+    if (state.analysis?.key === matchKey) {
+      box.innerHTML = render(data);
+      wireStatsSwitch(box);
+    }
   } catch {
     if (state.analysis?.key === matchKey) box.innerHTML = '';
   }

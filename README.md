@@ -11,6 +11,7 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - Double-chance tips derived from outcome probabilities. Goals and both-teams-to-score estimates appear only with the fallback goal model.
 - API-Football primary; football-data.org fallback where the competition and match can be verified.
 - Forecast source, timestamps, model limitations and missing-data states.
+- Match analysis extras: a goals ladder (Over/Under 0.5 to 3.5 and both teams to score) estimated from the goal model's expected goals, a side-by-side team comparison (points, win rate, goals scored and conceded, clean sheets, both-teams-scored and over-2.5 rates; overall or home/away) and observed goal trends from the two teams' recent matches. The comparison and trends use completed regulation-time matches from the football-data.org histories the app already caches (up to ten per team), so they cost no extra requests; they need `FOOTBALL_DATA_ORG_KEY`. The ladder appears only when the goal model produced expected goals, not for bookmaker-based or API-Football forecasts, which carry no goal estimate.
 - Private server-stored virtual picks, frozen at save, accessible through a browser-profile cookie.
 - Installable web app (PWA) with an offline-capable shell; see Install and offline use.
 - Optional kickoff reminders and result alerts as browser notifications; see Kickoff reminders.

@@ -86,3 +86,70 @@ export function headToHead(rows, teamA, teamB, now = Date.now(), n = 5) {
     })),
   };
 }
+
+const round = (value, places) => Math.round(value * 10 ** places) / 10 ** places;
+const GOAL_LINES = [0.5, 1.5, 2.5, 3.5];
+
+/**
+ * Season-style numbers for one team over its last `n` completed regulation-time matches,
+ * optionally only those played at home or away. Null when the team has no such match.
+ * Rates are fractions (0 to 1); `played` says how many matches they rest on.
+ */
+export function teamStats(rows, teamId, now = Date.now(), {n = 10, venue} = {}) {
+  const games = finishedMatches(rows, now)
+    .filter((m) => {
+      const home = m.home.id === teamId;
+      if (!home && m.away.id !== teamId) return false;
+      return venue === 'home' ? home : venue === 'away' ? !home : true;
+    })
+    .slice(0, n)
+    .map((m) => {
+      const home = m.home.id === teamId;
+      return {gf: home ? m.hg : m.ag, ga: home ? m.ag : m.hg};
+    });
+  if (!games.length) return null;
+  const played = games.length;
+  const share = (test) => round(games.filter(test).length / played, 3);
+  const wins = games.filter((g) => g.gf > g.ga).length;
+  const draws = games.filter((g) => g.gf === g.ga).length;
+  return {
+    played,
+    wins,
+    draws,
+    losses: played - wins - draws,
+    ppg: round((wins * 3 + draws) / played, 2),
+    winRate: round(wins / played, 3),
+    scored: round(games.reduce((s, g) => s + g.gf, 0) / played, 2),
+    conceded: round(games.reduce((s, g) => s + g.ga, 0) / played, 2),
+    cleanSheetRate: share((g) => g.ga === 0),
+    failedToScoreRate: share((g) => g.gf === 0),
+    bttsRate: share((g) => g.gf > 0 && g.ga > 0),
+    over25Rate: share((g) => g.gf + g.ga > 2),
+  };
+}
+
+/**
+ * How often recent matches of the two teams went over each goal line and had both teams
+ * score, pooling each team's last `n` matches (a meeting counted once). Observed frequencies,
+ * not a forecast. Null with no matches.
+ */
+export function goalRates(rowsA, teamA, rowsB, teamB, now = Date.now(), n = 10) {
+  const pick = (rows, id) =>
+    finishedMatches(rows, now)
+      .filter((m) => m.home.id === id || m.away.id === id)
+      .slice(0, n);
+  const pooled = new Map();
+  for (const m of [...pick(rowsA, teamA), ...pick(rowsB, teamB)])
+    pooled.set(`${m.t}-${m.home.id}-${m.away.id}`, m);
+  const games = [...pooled.values()];
+  if (!games.length) return null;
+  const share = (test) => round(games.filter(test).length / games.length, 3);
+  return {
+    matches: games.length,
+    lines: GOAL_LINES.map((line) => {
+      const over = share((m) => m.hg + m.ag > line);
+      return {line, over, under: round(1 - over, 3)};
+    }),
+    btts: share((m) => m.hg > 0 && m.ag > 0),
+  };
+}

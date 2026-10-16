@@ -1416,3 +1416,87 @@ progress::-moz-progress-bar {
 .reminders .actions {
   margin-top: var(--space-2);
 }
+
+/* ---------- Goal lines and team comparison ---------- */
+.goal-lines {
+  display: grid;
+  gap: var(--space-2);
+}
+.goal-line {
+  display: grid;
+  grid-template-columns: 88px 100px 1fr 100px;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 14px;
+}
+.goal-line .goal-name {
+  color: var(--muted);
+}
+.goal-line strong {
+  font-family: var(--font-mono);
+}
+.goal-line span:last-child {
+  text-align: right;
+}
+.view-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.view-switch button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+.compare-view {
+  display: none;
+}
+.compare[data-view='overall'] .compare-view[data-for='overall'],
+.compare[data-view='venue'] .compare-view[data-for='venue'] {
+  display: block;
+}
+.compare-head,
+.compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  gap: var(--space-3);
+}
+.compare-head {
+  padding-bottom: var(--space-2);
+  font-size: 13px;
+}
+.compare-row {
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+.compare-label {
+  color: var(--muted);
+}
+.compare-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.compare-side strong {
+  font-family: var(--font-mono);
+}
+@media (max-width: 640px) {
+  .goal-line {
+    grid-template-columns: 1fr 1fr;
+  }
+  .goal-line progress {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+  .goal-line .goal-name {
+    grid-column: 1 / -1;
+  }
+  .compare-head,
+  .compare-row {
+    grid-template-columns: 1.2fr 1fr 1fr;
+    gap: var(--space-2);
+  }
+}

@@ -61,6 +61,7 @@ export function analyze(f) {
           ? 'Stronger favorite'
           : 'Moderate favorite',
     tips,
+    goals: f.expectedGoals ? goalMarkets(f.expectedGoals) : null,
     verdict:
       margin < 8 || top < 45
         ? 'Consider skipping this match: the forecast does not separate the outcomes strongly.'
@@ -71,4 +72,22 @@ export function analyze(f) {
       ? 'These probabilities come from bookmaker prices, so these tips carry no edge or expected profit. Predictions cover 90 minutes plus stoppage time.'
       : 'No bookmaker odds are connected, so these tips do not establish value or expected profit. Predictions cover 90 minutes plus stoppage time.',
   };
+}
+
+/**
+ * Over/Under probabilities (percent) for the usual goal lines and both-teams-to-score, from the
+ * model's expected goals under independent Poisson scoring. Estimates, not bookmaker prices.
+ */
+export function goalMarkets([home, away]) {
+  const total = home + away;
+  const pct = (p) => Math.round(Math.min(1, Math.max(0, p)) * 1000) / 10;
+  let term = Math.exp(-total); // P(total goals = k), starting at k = 0
+  let upTo = 0; // P(total goals <= k)
+  const lines = [];
+  for (let k = 0; k <= 3; k++) {
+    upTo += term;
+    lines.push({line: k + 0.5, over: pct(1 - upTo), under: pct(upTo)});
+    term = (term * total) / (k + 1);
+  }
+  return {lines, btts: pct((1 - Math.exp(-home)) * (1 - Math.exp(-away)))};
 }
