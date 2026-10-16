@@ -1,4 +1,5 @@
-import {summarizePicks} from '/pickstats.js';
+import {accuracyTrend, summarizePicks} from '/pickstats.js';
+import {trendChart} from '../trend.js';
 import {$, esc} from '../dom.js';
 
 const pct = (v) => (v === null || v === undefined ? '—' : Math.round(v * 100) + '%');
@@ -61,6 +62,10 @@ export function renderPickStats(picks) {
     ),
   ].join('');
 
+  const chart = trendChart(accuracyTrend(picks));
+  const trend = chart
+    ? `<div class="stat-block"><h4>Accuracy over time</h4>${chart}<p class="muted trend-legend"><span class="key accuracy"></span> Your accuracy so far <span class="key expected"></span> What the forecasts expected for these picks. Starts at your third settled pick.</p></div>`
+    : '';
   const recent = `<div class="stat-block"><h4>Last ${s.recent.length} results</h4><div class="form">${s.recent.map(recentChip).join('')}</div></div>`;
 
   const confidence = table(
@@ -88,5 +93,5 @@ export function renderPickStats(picks) {
     ? `<p class="muted">Only ${s.settled} settled pick${s.settled === 1 ? '' : 's'} so far. Percentages swing a lot with so few, which is why the range is shown. About ${s.minReliableSample} or more gives a steadier picture.</p>`
     : '';
 
-  box.innerHTML = `<h3>Your results</h3><div class="stat-tiles">${tiles}</div>${caution}${recent}<div class="stat-grid">${confidence}${competitions}${outcomes}</div>${followText}`;
+  box.innerHTML = `<h3>Your results</h3><div class="stat-tiles">${tiles}</div>${caution}${trend}${recent}<div class="stat-grid">${confidence}${competitions}${outcomes}</div>${followText}`;
 }

@@ -45,6 +45,23 @@ function groupBy(settled, keyOf) {
 }
 
 /**
+ * Running accuracy after each settled pick (oldest first, by match date) next to what the
+ * forecasts expected on average for the same picks. Void and pending picks are not counted.
+ */
+export function accuracyTrend(picks) {
+  const settled = (Array.isArray(picks) ? picks : [])
+    .filter((p) => p.result === 'correct' || p.result === 'incorrect')
+    .sort((a, b) => kickoff(a) - kickoff(b));
+  let hits = 0;
+  let expected = 0;
+  return settled.map((p, i) => {
+    if (p.result === 'correct') hits++;
+    expected += (probabilityOnPick(p) || 0) / 100;
+    return {n: i + 1, accuracy: hits / (i + 1), expected: expected / (i + 1)};
+  });
+}
+
+/**
  * Summary of a person's picks. Only picks with a result of correct or incorrect count towards
  * accuracy; void picks (cancelled matches) and pending picks are reported separately.
  */

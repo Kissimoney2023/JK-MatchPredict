@@ -1536,3 +1536,46 @@ progress::-moz-progress-bar {
 .other-matches strong {
   overflow-wrap: anywhere;
 }
+
+/* ---------- Accuracy over time ---------- */
+.trend {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 720px;
+}
+.trend-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.trend-axis {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+}
+.trend-accuracy {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.trend-expected {
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+.trend-dot {
+  fill: var(--accent);
+}
+.trend-legend .key {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  margin: 0 6px 3px 12px;
+  border-top: 3px solid var(--accent);
+}
+.trend-legend .key:first-child {
+  margin-left: 0;
+}
+.trend-legend .key.expected {
+  border-top: 3px dashed var(--muted);
+}
