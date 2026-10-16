@@ -164,12 +164,12 @@ function wireStatsSwitch(box) {
 }
 
 /** Fills the optional "form" section of the open analysis dialog. Never blocks the forecast. */
-export async function loadInsights(matchKey) {
+export async function loadInsights(matchKey, listing = state.listing) {
   const box = $('#insights');
   if (!box || state.demo) return;
   box.innerHTML = '<p class="muted">Loading recent form…</p>';
   try {
-    const data = await api('insights', {key: matchKey, listing: state.listing});
+    const data = await api('insights', {key: matchKey, listing});
     if (state.analysis?.key === matchKey) {
       box.innerHTML = render(data);
       wireStatsSwitch(box);

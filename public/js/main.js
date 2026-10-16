@@ -12,6 +12,7 @@ import {loadStandings} from './views/standings.js';
 import {loadInsights} from './views/insights.js';
 import {initShare} from './views/share.js';
 import {initReminders} from './views/reminders.js';
+import {loadPotd} from './views/potd.js';
 import {initAccountUi, renderAccount, finishLogin, takeLoginReturn} from './views/account.js';
 
 // ---- Data loading ---------------------------------------------------------
@@ -75,6 +76,7 @@ async function initialize() {
       message('Could not verify your sign-in right now. Reload the page to try again.');
     renderAccount();
     renderConnection();
+    if (status.connected) loadPotd(); // optional card; never blocks the page
     if (status.connected) {
       const catalog = await api('leagues');
       state.leagues = catalog.leagues;
@@ -115,13 +117,15 @@ function startDemo() {
 
 // ---- Actions --------------------------------------------------------------
 
-const analyzeMatch = (key) =>
+// `listing` is the match list the key belongs to: the pick of the day comes from the server's
+// own list, not the one on screen.
+const analyzeMatch = (key, listing = state.listing) =>
   run(async () => {
     const forecast = state.demo
       ? state.fixtures.find((f) => f.key === key)
-      : await api('forecast', {key, listing: state.listing});
+      : await api('forecast', {key, listing});
     showAnalysis(forecast);
-    loadInsights(forecast.key); // optional extra; does not block or fail the forecast
+    loadInsights(forecast.key, listing); // optional extra; does not block or fail the forecast
   });
 
 const savePick = (outcome) =>
@@ -175,7 +179,7 @@ function onButtonClick(e) {
     renderLeagues();
   }
   if (b.hasAttribute('data-remove-pick')) removePickClick(b);
-  if (b.dataset.analyze) analyzeMatch(b.dataset.analyze);
+  if (b.dataset.analyze) analyzeMatch(b.dataset.analyze, b.dataset.listing || state.listing);
   if (b.hasAttribute('data-save')) savePick(Number(b.dataset.save));
 }
 

@@ -84,6 +84,7 @@ export function makeHandler(deps, env = process.env) {
             ...(accountError ? {accountError: true} : {}),
           });
         if (action === 'leagues') return json(await service.catalog());
+        if (action === 'potd') return json(await service.potd.current());
         if (action === 'fixtures') return json(await service.fixtures(url.searchParams));
         if (action === 'insights')
           return json(
@@ -225,7 +226,10 @@ export function makePrefetchHandler(deps, env) {
         console.error('reminders failed', e);
         return {error: 'Reminders failed.'};
       });
-      return respond({...(await service.prefetch()), reminders});
+      const warmed = await service.prefetch();
+      // The pick of the day last: it reads the histories and tables that were just warmed.
+      const potd = await service.potd.refresh();
+      return respond({...warmed, reminders, potd});
     } catch (e) {
       console.error('prefetch failed', e);
       return respond({error: 'Prefetch failed.'}, 500);

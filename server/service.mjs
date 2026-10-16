@@ -13,6 +13,7 @@ import {createPrefetch} from './service/prefetch.mjs';
 import {createAccounts} from './service/accounts.mjs';
 import {createPickStore} from './service/pickstore.mjs';
 import {createReminders} from './service/reminders.mjs';
+import {createPickOfTheDay} from './service/potd.mjs';
 import {createShares} from './service/shares.mjs';
 import {createSupabase} from './supabase.mjs';
 
@@ -76,6 +77,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
   });
   const shares = createShares({supabase, pickStore, storage, now});
   const accounts = createAccounts({env, supabase, storage, now, mergePicks});
+  const potd = createPickOfTheDay({env, now, storage, fixtures, forecast});
   const reminders = createReminders({env, now, storage, pickStore, settleDue, send: sendPush});
   const prefetch = createPrefetch({
     env,
@@ -114,6 +116,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
     accounts,
     shares,
     reminders,
+    potd,
     prefetch: prefetch.run,
     budget: storage.budget,
   };

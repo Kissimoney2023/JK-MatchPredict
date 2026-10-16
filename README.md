@@ -17,6 +17,7 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - Match analysis extras: a goals ladder (Over/Under 0.5 to 3.5 and both teams to score) estimated from the goal model's expected goals, a side-by-side team comparison (points, win rate, goals scored and conceded, clean sheets, both-teams-scored and over-2.5 rates; overall or home/away) and observed goal trends from the two teams' recent matches. The comparison and trends use completed regulation-time matches from the football-data.org histories the app already caches (up to ten per team), so they cost no extra requests; they need `FOOTBALL_DATA_ORG_KEY`. The ladder appears only when the goal model produced expected goals, not for bookmaker-based or API-Football forecasts, which carry no goal estimate.
 - Private server-stored virtual picks, frozen at save, accessible through a browser-profile cookie.
 - Installable web app (PWA) with an offline-capable shell; see Install and offline use.
+- Pick of the day on the dashboard: the strongest forecast among the main competitions' next matches; see Pick of the day.
 - Optional kickoff reminders and result alerts as browser notifications; see Kickoff reminders.
 - Result checking and JSON export. No deposits, wagers, wallets or payments.
 - Explicit demo mode with invented examples, available even before keys are configured.
@@ -44,6 +45,7 @@ API_FOOTBALL_DAILY_LIMIT=100
 - `API_FOOTBALL_KEY`: direct API-Football/API-Sports key. A RapidAPI credential is not interchangeable.
 - `FOOTBALL_DATA_ORG_KEY`: football-data.org API token.
 - `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_PUBLISHABLE_KEY`, optional `SITE_URL`: accounts (see Accounts).
+- `POTD_COMPETITIONS`: competitions considered for the pick of the day (see Pick of the day).
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, optional `VAPID_SUBJECT`: kickoff reminders (see Kickoff reminders).
 - `STRIKERAPI_API_KEY`: optional StrikerAPI key (see StrikerAPI above). `STRIKERAPI_MONTHLY_CREDITS`: credit cap, default 450. `STRIKERAPI_MARKET_FORECASTS`: `off` disables market-based forecasts.
 - `CRON_SECRET`: secret for `/api/prefetch` (see Scheduled prefetch). `PREFETCH_COMPETITIONS`: optional competition codes to warm, default `CL`.
@@ -130,6 +132,14 @@ Setup (the button stays hidden until both keys exist):
 3. Reminders are sent by the scheduled job (`/api/prefetch`), which must run often. Vercel's Hobby cron runs once a day, so also set the GitHub repository secrets `SITE_URL` and `CRON_SECRET` described under Scheduled prefetch: the workflow then runs every 15 minutes.
 
 Notes: a subscription is stored in the key-value store (Redis in production; the in-memory fallback forgets it on restart) as the browser's push address and keys, tied to the profile it was made with, and re-linked to your account when you sign in. At most 2000 subscriptions and 5 devices per profile. For safety the server only sends to the browser vendors' push services (Google, Mozilla, Apple, Microsoft); anything else is rejected. A browser that unsubscribes is removed automatically.
+
+## Pick of the day
+
+A card at the top of the dashboard names the upcoming match (starting within 36 hours, in the main competitions) whose forecast has the clearest favourite: the highest probability for one outcome among forecasts that clear the app's own "enough separation" bar. It is a probability, not a certainty and not betting advice, and the card says so. If no forecast clears the bar, or nothing has been computed yet, the card is simply not shown.
+
+How it works: forecasts cost provider requests, so visitors never trigger them. The scheduled job (`/api/prefetch`, after the cache warm-up) lists today's and tomorrow's fixtures (two cached requests), forecasts at most eight candidates (competition order first, then kickoff), stores the best three, and recomputes at most every six hours. The page only reads the stored result, and shows the next one if the first has kicked off. A stored result older than 30 hours is not shown. Because Vercel's Hobby cron runs once a day (05:00 UTC), the card first appears after that run; to see it sooner, call the endpoint once with your secret: `curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.vercel.app/api/prefetch`. The GitHub workflow described under Scheduled prefetch keeps it fresh every 15 minutes.
+
+Settings: `POTD_COMPETITIONS` (football-data.org codes, comma separated, in order of importance; default `CL,PL,PD,BL1,SA,FL1`). Competitions need a fixtures source (API-Football or football-data.org) and a forecast source (the models, or StrikerAPI market lines).
 
 ## Pick statistics
 
