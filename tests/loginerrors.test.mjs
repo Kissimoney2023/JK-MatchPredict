@@ -16,15 +16,19 @@ test('an expired or reused sign-in code is explained as such', () => {
     );
 });
 
-test('a rejected API key is reported as a configuration problem, without naming the key', () => {
+test('a rejected key says which key to fix, without echoing any key', () => {
   for (const [status, body] of [
     [401, '{"message":"Invalid API key"}'],
     [403, '{"message":"forbidden"}'],
     [400, '{"msg":"Invalid JWT"}'],
   ]) {
-    const message = authFailure(status, body);
-    assert.match(message, /rejected this site's API key/);
-    assert.match(message, /SUPABASE_PUBLISHABLE_KEY/);
+    const set = authFailure(status, body);
+    assert.match(set, /refused the publishable key set in SUPABASE_PUBLISHABLE_KEY/);
+    assert.match(set, /no quotes or spaces/);
+    const missing = authFailure(status, body, {fallbackKey: true});
+    assert.match(missing, /SUPABASE_PUBLISHABLE_KEY is not set/);
+    assert.match(missing, /secret key was tried/);
+    assert.ok(!/sb_(secret|publishable)_[A-Za-z0-9]/.test(set + missing), 'no key material');
   }
 });
 
@@ -67,4 +71,38 @@ test('the code exchange turns a Supabase refusal into that explanation', async (
     fetcher: async () => Response.json({}, {status: 503}),
   });
   await assert.rejects(() => down.exchangeCode('c', 'v'), /temporarily unavailable/);
+});
+
+test('keys pasted with quotes, spaces or a newline are cleaned before use', async () => {
+  const seen = [];
+  const supabase = createSupabase({
+    url: ' "https://proj.supabase.co/" \n',
+    key: '  "sb_secret_abc"\n',
+    authKey: " 'sb_publishable_xyz' \r\n",
+    fetcher: async (url, options) => {
+      seen.push({url, apikey: options.headers.apikey});
+      return Response.json([]);
+    },
+  });
+  await supabase.select('picks', {limit: '1'});
+  await supabase.exchangeCode('code', 'verifier').catch(() => {});
+  assert.equal(seen[0].url.startsWith('https://proj.supabase.co/rest/v1/picks'), true);
+  assert.equal(seen[0].apikey, 'sb_secret_abc', 'table calls use the secret key');
+  assert.equal(
+    seen[1].apikey,
+    'sb_publishable_xyz',
+    'the sign-in exchange uses the publishable key',
+  );
+});
+
+test('without a publishable key the exchange falls back to the secret key and says so when refused', async () => {
+  const supabase = createSupabase({
+    url: 'https://proj.supabase.co',
+    key: 'sb_secret_abc',
+    fetcher: async () => Response.json({message: 'Invalid API key'}, {status: 401}),
+  });
+  await assert.rejects(
+    () => supabase.exchangeCode('c', 'v'),
+    /SUPABASE_PUBLISHABLE_KEY is not set/,
+  );
 });

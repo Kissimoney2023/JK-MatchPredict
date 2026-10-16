@@ -12,7 +12,7 @@ function withoutTrailingSlashes(url) {
  * Plain-language reason a sign-in (Auth) call was refused, from Supabase's own error code.
  * Only short, safe codes are echoed back; secrets and long messages never are.
  */
-export function authFailure(status, bodyText) {
+export function authFailure(status, bodyText, {fallbackKey = false} = {}) {
   let body = null;
   try {
     body = JSON.parse(bodyText);
@@ -27,7 +27,9 @@ export function authFailure(status, bodyText) {
   const start = 'Sign-in could not be completed';
 
   if (status === 401 || status === 403 || /api key|apikey|invalid jwt|jwt/.test(words))
-    return `${start}: Supabase rejected this site's API key. If you run this site, check the Supabase keys in Vercel (SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY).`;
+    return fallbackKey
+      ? `${start}: SUPABASE_PUBLISHABLE_KEY is not set on this site, so the secret key was tried for sign-in and Supabase refused it. Add the publishable key (sb_publishable_…, Supabase → Project Settings → API Keys) in Vercel and redeploy.`
+      : `${start}: Supabase refused the publishable key set in SUPABASE_PUBLISHABLE_KEY. Re-copy it from Supabase → Project Settings → API Keys into Vercel (just the key, no quotes or spaces) and redeploy.`;
   if (status === 429 || /rate_limit|too many/.test(words))
     return `${start}: too many attempts. Wait a minute and try again.`;
   if (/flow_state|code_verifier|invalid_grant|auth.?code|expired|not.?found/.test(words))
@@ -46,7 +48,17 @@ export function authFailure(status, bodyText) {
  * key is also sent as a Bearer token.
  */
 export function createSupabase({url, key, authKey, fetcher}) {
-  const base = withoutTrailingSlashes(url);
+  // Values pasted into a dashboard often carry stray spaces, a newline, or quotes.
+  const tidy = (value) =>
+    value === undefined || value === null
+      ? value
+      : String(value)
+          .trim()
+          .replace(/^["']+|["']+$/g, '')
+          .trim();
+  key = tidy(key);
+  authKey = tidy(authKey) || undefined;
+  const base = withoutTrailingSlashes(tidy(url));
 
   /** `authCall` marks Auth requests, where a 4xx means "this sign-in cannot be completed". */
   async function call(path, {method = 'GET', query, body, prefer, authCall = false} = {}) {
@@ -71,7 +83,11 @@ export function createSupabase({url, key, authKey, fetcher}) {
       const detail = (await response.text().catch(() => '')).slice(0, 200);
       console.warn(`[supabase] HTTP ${response.status} ${method} ${path}: ${detail}`);
       if (authCall && response.status < 500)
-        throw new AppError(400, 'auth', authFailure(response.status, detail));
+        throw new AppError(
+          400,
+          'auth',
+          authFailure(response.status, detail, {fallbackKey: !authKey}),
+        );
       throw new AppError(502, 'database', 'The database is temporarily unavailable.');
     }
     const text = await response.text();

@@ -105,6 +105,10 @@ Without an account, picks live in a private server-side profile tied to the brow
 
 Signing in with GitHub and with Google using the same email can create two separate accounts unless Supabase links identities (Authentication → Sign In / Providers → "Allow manual linking" / automatic linking settings); picks are per account.
 
+### If sign-in fails
+
+The dialog says why. "Supabase refused the publishable key" (or "SUPABASE_PUBLISHABLE_KEY is not set, so the secret key was tried") means the key Vercel sends for the sign-in step is missing or wrong: set `SUPABASE_PUBLISHABLE_KEY` to the publishable key (`sb_publishable_…`) from Supabase → Project Settings → API Keys, apply it to the environment you are using (Production and Preview), and redeploy, because environment changes only take effect on a new deployment. Quotes, spaces and trailing newlines around pasted keys and the URL are removed automatically. "That attempt expired or was already used" means the one-time code was stale: press the sign-in button again without leaving the page. A key check you can run yourself: `curl -H "apikey: <publishable key>" https://<project>.supabase.co/auth/v1/settings` answers 200 with a valid key and 401 otherwise.
+
 ### How it works
 
 OAuth with PKCE, done on the server so no Supabase key ever reaches the browser. "Continue with GitHub" asks the server for a sign-in URL; the server keeps a one-time PKCE verifier in a short-lived `HttpOnly` cookie and returns the URL. After GitHub, Supabase redirects back with `?code=`; the page strips it from the address bar and posts it to the server, which exchanges it (code and verifier together; a stolen code alone is useless), saves the profile, opens a 90-day server-side session and merges the browser's picks. The session cookie (`jk_auth`) is `HttpOnly`, `SameSite=Lax` and `Secure`, separate from the anonymous profile cookie, and only a hash of its token is stored. Sign-out revokes the session. Session lookups are cached for a minute per server instance. Picks of signed-in people are rows in `public.picks` (one per match, original forecast kept), which also makes accuracy statistics a simple query.
