@@ -1,6 +1,9 @@
-# Optional: warms the caches more often than Vercel's once-a-day Hobby cron.
-# Add repository secrets SITE_URL (e.g. https://your-app.vercel.app) and CRON_SECRET
-# (same value as the CRON_SECRET environment variable in Vercel). Without them this job does nothing.
+# Runs the site's scheduled job every 15 minutes (Vercel's free cron only runs it once a day):
+# cache warm-up, kickoff reminders, result alerts, picks of the day.
+# Add REPOSITORY secrets (Settings > Secrets and variables > Actions > Repository secrets):
+#   SITE_URL     e.g. https://your-app.vercel.app
+#   CRON_SECRET  the same value as the CRON_SECRET environment variable in Vercel
+# Without them this job only prints a warning. The run summary shows what happened.
 name: Prefetch football data
 
 on:
@@ -17,10 +20,51 @@ jobs:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          # Tidy pasted values: no spaces or newlines, no trailing slash on the address.
+          SITE_URL=$(printf '%s' "$SITE_URL" | tr -d ' \r\n')
+          SITE_URL="${SITE_URL%/}"
+          CRON_SECRET=$(printf '%s' "$CRON_SECRET" | tr -d ' \r\n')
+
           if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ]; then
-            echo "SITE_URL / CRON_SECRET secrets are not set; skipping."
+            echo "::warning title=Prefetch skipped::SITE_URL and/or CRON_SECRET are not available to this workflow. Add both as Repository secrets (not Variables or Environment secrets)."
+            {
+              echo "### Prefetch skipped"
+              echo "The repository secrets SITE_URL and CRON_SECRET were not found."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          curl --fail --silent --show-error --max-time 70 \
+
+          status=$(curl --silent --show-error --max-time 70 \
+            --output response.json --write-out '%{http_code} in %{time_total}s' \
             -H "Authorization: Bearer $CRON_SECRET" \
-            "$SITE_URL/api/prefetch"
+            "$SITE_URL/api/prefetch") || {
+            echo "::error title=Prefetch failed::Could not reach $SITE_URL"
+            exit 1
+          }
+          echo "HTTP $status"
+          cat response.json
+          echo
+          {
+            echo "### Prefetch"
+            echo "HTTP $status"
+            echo '```json'
+            head -c 1500 response.json
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          case "$status" in
+            200*) ;;
+            401*)
+              echo "::error title=Prefetch refused::The site rejected CRON_SECRET. It must equal the CRON_SECRET in Vercel."
+              exit 1
+              ;;
+            503*)
+              echo "::error title=Prefetch unavailable::CRON_SECRET is not set on the site (Vercel)."
+              exit 1
+              ;;
+            *)
+              echo "::error title=Prefetch failed::Unexpected response from the site."
+              exit 1
+              ;;
+          esac
