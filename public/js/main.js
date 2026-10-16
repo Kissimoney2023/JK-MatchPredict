@@ -1,7 +1,7 @@
 import {api} from './api.js';
 import {run} from './busy.js';
 import {demoLeagues, samples} from './demo.js';
-import {$, $$, addDays, message, todayUtc} from './dom.js';
+import {$, $$, addDays, message, todayUtc, notice} from './dom.js';
 import {state} from './state.js';
 import {showAnalysis} from './views/analysis.js';
 import {renderConnection} from './views/connection.js';
@@ -44,7 +44,7 @@ async function loadMatches() {
   state.listing = data.listingId;
   state.source = data.source;
   state.at = data.fetchedAt;
-  message((data.warnings || []).join(' '));
+  notice(data.warnings, {loaded: data.fixtures.length > 0, source: data.source});
   renderMatches();
 }
 

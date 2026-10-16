@@ -25,3 +25,17 @@ export const todayUtc = (offsetDays = 0) =>
 export function message(text, target = '#feedback') {
   $(target).innerHTML = text ? `<div class="message">${esc(text)}</div>` : '';
 }
+
+/**
+ * Data-source warnings. When matches loaded anyway (the fallback provider answered) the note is
+ * only background, so it is a quiet one-liner with the details a click away; when nothing
+ * loaded it stays a visible warning, because it explains why.
+ */
+export function notice(warnings, {loaded = false, source = ''} = {}, target = '#feedback') {
+  const text = (warnings || []).join(' ').trim();
+  if (!text) return message('', target);
+  if (!loaded) return message(text, target);
+  const lead = source ? `Showing matches from ${esc(source)}.` : 'A note about the data source.';
+  $(target).innerHTML =
+    `<details class="notice"><summary>${lead} <span class="notice-more">Details</span></summary><p>${esc(text)}</p></details>`;
+}

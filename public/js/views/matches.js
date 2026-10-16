@@ -92,7 +92,8 @@ export function renderMatches() {
   const list = matchesInView();
   const shown = state.page * PAGE_SIZE;
   const source = state.demo ? 'illustrative demo' : state.source || 'waiting for data';
-  $('#match-count').textContent = `${list.length} matches · ${source}`;
+  $('#match-count').textContent =
+    `${list.length} match${list.length === 1 ? '' : 'es'} · ${source}`;
   $('#updated').textContent = state.at ? 'Fetched ' + formatDate(state.at) : '';
   $('#matches').innerHTML = list.length
     ? list.slice(0, shown).map(matchCard).join('')

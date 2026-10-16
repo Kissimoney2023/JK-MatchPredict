@@ -1704,3 +1704,20 @@ progress::-moz-progress-bar {
   color: #fca5a5;
   background: rgb(239 68 68 / 0.16);
 }
+
+/* ---------- Quiet data-source note ---------- */
+.notice {
+  margin: var(--space-2) 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.notice summary {
+  cursor: pointer;
+}
+.notice-more {
+  color: var(--fg-soft);
+  text-decoration: underline;
+}
+.notice p {
+  margin: var(--space-2) 0 0;
+}
