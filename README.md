@@ -11,7 +11,7 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - Double-chance tips derived from outcome probabilities. Goals and both-teams-to-score estimates appear only with the fallback goal model.
 - API-Football primary; football-data.org fallback where the competition and match can be verified.
 - Forecast source, timestamps, model limitations and missing-data states.
-- Accuracy over time: a chart on My picks of your running accuracy after each settled pick (by match date) against what the forecasts expected for the same picks, starting at the third settled pick and shown from five. Void and pending picks are left out. It is computed in the browser from your picks; nothing extra is stored.
+- Accuracy over time: a chart on My picks of your running accuracy after each settled pick (by match date) against what the forecasts expected for the same picks, starting at the third settled pick and shown from five. Void and pending picks are left out. On My picks it is computed in the browser from your picks; the public share page shows the same chart from the stored snapshot.
 - Other matches that day: the analysis dialog lists up to six more matches from the same (local) day that still accept picks, same competition first, each with an Analyse button that opens its forecast in place. It reads the match list you are already browsing, so it needs no extra requests, and it shows only what is in that list (filter to one competition and only that competition's matches appear).
 - League position: each team's place in the competition table ("2nd of 20", points, record, goal difference) at the top of the match insights, read from the standings the app already caches for 12 hours (football-data.org, StrikerAPI as the fallback). A club is matched by name and is left out, never guessed, if it is missing from the table or two table rows could match it.
 - Match analysis extras: a goals ladder (Over/Under 0.5 to 3.5 and both teams to score) estimated from the goal model's expected goals, a side-by-side team comparison (points, win rate, goals scored and conceded, clean sheets, both-teams-scored and over-2.5 rates; overall or home/away) and observed goal trends from the two teams' recent matches. The comparison and trends use completed regulation-time matches from the football-data.org histories the app already caches (up to ten per team), so they cost no extra requests; they need `FOOTBALL_DATA_ORG_KEY`. The ladder appears only when the goal model produced expected goals, not for bookmaker-based or API-Football forecasts, which carry no goal estimate.
@@ -143,6 +143,8 @@ Notes: a subscription is stored in the key-value store (Redis in production; the
 These describe a person's picks only; they are not a measure of the forecasts' accuracy (use `scripts/backtest.mjs` for that).
 
 ## Sharing results
+
+The public page also shows the "Accuracy over time" chart. The snapshot stores a thinned series (at most 60 rounded points: pick number, running accuracy, expected accuracy) and nothing else about individual picks beyond what the page already lists. Links created before this feature have no chart until their owner presses Share results again to refresh the snapshot (the address does not change).
 
 Shared links show a large link preview (title, summary and a branded 1200×630 image, `public/icons/og-image.jpg`) when pasted into chat apps or social networks. The image is the same for everyone; it is not generated per person, so it never carries a name or results.
 

@@ -1,5 +1,5 @@
 import {accuracyTrend, summarizePicks} from '/pickstats.js';
-import {trendChart} from '../trend.js';
+import {trendBlock} from '/trend.js';
 import {$, esc} from '../dom.js';
 
 const pct = (v) => (v === null || v === undefined ? '—' : Math.round(v * 100) + '%');
@@ -62,10 +62,7 @@ export function renderPickStats(picks) {
     ),
   ].join('');
 
-  const chart = trendChart(accuracyTrend(picks));
-  const trend = chart
-    ? `<div class="stat-block"><h4>Accuracy over time</h4>${chart}<p class="muted trend-legend"><span class="key accuracy"></span> Your accuracy so far <span class="key expected"></span> What the forecasts expected for these picks. Starts at your third settled pick.</p></div>`
-    : '';
+  const trend = trendBlock(accuracyTrend(picks));
   const recent = `<div class="stat-block"><h4>Last ${s.recent.length} results</h4><div class="form">${s.recent.map(recentChip).join('')}</div></div>`;
 
   const confidence = table(

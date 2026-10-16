@@ -1,5 +1,6 @@
 // Pure SVG builder for the "accuracy over time" chart. No imports and no DOM, so it can be unit
-// tested in Node. Colours come from CSS classes, because the page's CSP forbids inline styles.
+// tested in Node. Like analysis.mjs and pickstats.mjs it is also published to the browser
+// (as /trend.js), and the public share page uses it on the server. Colours come from CSS classes, because the page's CSP forbids inline styles.
 
 const FIRST_PLOTTED = 3; // the first picks swing between 0% and 100%; start once there are three
 const MIN_SETTLED = 5;
@@ -16,8 +17,16 @@ const pct = (v) => Math.round(v * 100);
  * draw. Every number is computed here, so the markup contains no user text.
  */
 export function trendChart(points, {width = 640, height = 220} = {}) {
-  if (!Array.isArray(points) || points.length < MIN_SETTLED) return '';
-  const shown = points.filter((p) => p.n >= FIRST_PLOTTED);
+  // Only finite numbers are drawn: a malformed series (for example from a stored snapshot)
+  // produces no chart rather than odd markup.
+  const clean = (Array.isArray(points) ? points : [])
+    .filter((p) =>
+      [p?.n, p?.accuracy, p?.expected].every((v) => typeof v === 'number' && Number.isFinite(v)),
+    )
+    .map((p) => ({n: Math.trunc(p.n), accuracy: p.accuracy, expected: p.expected}));
+  if (clean.length < MIN_SETTLED) return '';
+  const shown = clean.filter((p) => p.n >= FIRST_PLOTTED);
+  if (!shown.length) return '';
   const plotW = width - LEFT - RIGHT;
   const plotH = height - TOP - BOTTOM;
   const x = (i) => LEFT + (shown.length === 1 ? 0 : (i / (shown.length - 1)) * plotW);
@@ -49,4 +58,12 @@ export function trendChart(points, {width = 640, height = 220} = {}) {
     ends +
     '</svg>'
   );
+}
+
+/** The chart with its heading and legend, or '' when there is too little to draw. */
+export function trendBlock(points, {mine = true} = {}) {
+  const chart = trendChart(points);
+  if (!chart) return '';
+  const who = mine ? 'Your accuracy so far' : 'Accuracy so far';
+  return `<div class="stat-block"><h4>Accuracy over time</h4>${chart}<p class="muted trend-legend"><span class="key accuracy"></span> ${who} <span class="key expected"></span> What the forecasts expected for these picks. Starts at the third settled pick.</p></div>`;
 }

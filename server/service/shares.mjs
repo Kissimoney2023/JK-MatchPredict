@@ -1,15 +1,34 @@
 import {randomBytes} from 'node:crypto';
 import {AppError} from '../errors.mjs';
 import {HOUR} from '../util.mjs';
-import {summarizePicks} from '../pickstats.mjs';
+import {accuracyTrend, summarizePicks} from '../pickstats.mjs';
 
 const SHARE_ID_FORMAT = /^[A-Za-z0-9_-]{12}$/;
 const RECENT_PICKS = 10;
 const TOP_COMPETITIONS = 5;
+const MAX_TREND_POINTS = 60;
+const MIN_TREND_SETTLED = 5;
 const OUTCOME_NAMES = (p) => [`${p.forecast.home} win`, 'Draw', `${p.forecast.away} win`];
 
 /** Whether a string looks like a share id (so odd URLs never reach the database). */
 export const isShareId = (id) => SHARE_ID_FORMAT.test(String(id || ''));
+
+/**
+ * The accuracy-over-time series, thinned to at most 60 evenly spaced points (always keeping the
+ * first and the last) and rounded, so a long history stays small in the stored snapshot.
+ */
+export function sampleTrend(points) {
+  if (!Array.isArray(points) || points.length < MIN_TREND_SETTLED) return [];
+  const round = (v) => Math.round(v * 1000) / 1000;
+  const keep =
+    points.length <= MAX_TREND_POINTS
+      ? points
+      : Array.from(
+          {length: MAX_TREND_POINTS},
+          (_, i) => points[Math.round((i * (points.length - 1)) / (MAX_TREND_POINTS - 1))],
+        );
+  return keep.map((p) => ({n: p.n, accuracy: round(p.accuracy), expected: round(p.expected)}));
+}
 
 /**
  * What a public link reveals: aggregate statistics and the last settled picks. Pending picks,
@@ -33,6 +52,7 @@ export function buildSnapshot(picks, now) {
     smallSample: s.smallSample,
     minReliableSample: s.minReliableSample,
     recent: s.recent,
+    trend: sampleTrend(accuracyTrend(picks)),
     byCompetition: s.byCompetition
       .slice(0, TOP_COMPETITIONS)
       .map((c) => ({name: c.name, settled: c.settled, accuracy: c.accuracy})),

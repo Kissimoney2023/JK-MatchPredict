@@ -10,6 +10,7 @@ await mkdir('dist', {recursive: true});
 await cp('public', 'dist', {recursive: true});
 await cp('server/analysis.mjs', 'dist/analysis.js');
 await cp('server/pickstats.mjs', 'dist/pickstats.js');
+await cp('server/trend.mjs', 'dist/trend.js');
 
 // Self-hosted fonts keep the CSP strict (no third-party font hosts).
 const FONTS = [
@@ -78,6 +79,7 @@ for (const file of [
   'style.css',
   'analysis.js',
   'pickstats.js',
+  'trend.js',
   'js/main.js',
   'sw.js',
   'manifest.webmanifest',

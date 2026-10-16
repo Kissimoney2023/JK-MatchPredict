@@ -1,3 +1,5 @@
+import {trendBlock} from './trend.mjs';
+
 const esc = (value) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -69,6 +71,7 @@ export function renderSharePage({displayName, snapshot: s, updatedAt, origin, id
   const caution = s.smallSample
     ? `<p class="muted">Only ${s.settled} settled pick${s.settled === 1 ? '' : 's'} so far. Percentages swing a lot with so few, which is why the range is shown.</p>`
     : '';
+  const trend = trendBlock(s.trend ?? [], {mine: false});
   const recent = s.recent.length
     ? `<div class="stat-block"><h4>Last ${s.recent.length} results</h4><div class="form">${s.recent.map(chip).join('')}</div></div>`
     : '';
@@ -122,6 +125,7 @@ export function renderSharePage({displayName, snapshot: s, updatedAt, origin, id
       <p class="muted">Snapshot from ${esc(day(updatedAt))}. Virtual picks only: no money is staked and this is not betting advice. Percentages describe these picks, not the accuracy of the forecasts.</p>
       <div class="stat-tiles">${tiles}</div>
       ${caution}
+      ${trend}
       ${recent}
       <div class="stat-grid">${picks}${competitions}</div>
       <p><a class="primary share-cta" href="/">Make your own picks on JK MatchPredict</a></p>
