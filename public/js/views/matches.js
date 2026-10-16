@@ -23,28 +23,69 @@ function matchCard(f) {
   return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${f.demo ? 'SAMPLE' : esc(f.status)}</span></div><div class="teams">${team(f.home, f.form?.home)}<span class="vs">${esc(scoreText(f))}</span>${team(f.away, f.form?.away)}</div><div class="match-bottom"><small>${esc(formatDate(f.kickoff))}<br>Your local time</small>${action}</div></article>`;
 }
 
-function matchesInView() {
-  return state.fixtures.filter(
-    (f) =>
-      (!state.query || (f.home + ' ' + f.away).toLowerCase().includes(state.query)) &&
-      (state.status === 'all' ||
-        (state.status === 'upcoming' && ['NS', 'TBD'].includes(f.status)) ||
-        (state.status === 'live' && isLive(f)) ||
-        (state.status === 'finished' && isFinished(f))),
+const STATUS_TESTS = {
+  all: () => true,
+  upcoming: (f) => ['NS', 'TBD'].includes(f.status),
+  live: (f) => isLive(f),
+  finished: (f) => isFinished(f),
+};
+const STATUS_LABELS = {
+  all: 'All matches',
+  upcoming: 'Upcoming',
+  live: 'In progress',
+  finished: 'Finished',
+};
+// How each status reads in a sentence ("No matches in progress right now").
+const NONE_FOR = {
+  upcoming: 'No upcoming matches in this date range',
+  live: 'No matches are in progress right now',
+  finished: 'No finished matches in this date range',
+};
+
+/** Fixtures matching the team search (every status): the base for the tab counts. */
+const searched = () =>
+  state.fixtures.filter(
+    (f) => !state.query || (f.home + ' ' + f.away).toLowerCase().includes(state.query),
+  );
+
+export const matchesInView = () =>
+  searched().filter(STATUS_TESTS[state.status] ?? STATUS_TESTS.all);
+
+/** How many searched matches each tab would show. */
+export function statusCounts() {
+  const base = searched();
+  return Object.fromEntries(
+    Object.entries(STATUS_TESTS).map(([status, test]) => [status, base.filter(test).length]),
   );
 }
 
-function emptyState() {
+export function emptyState() {
   const ready = state.connected || state.demo;
-  const title = state.busy
-    ? 'Loading matches…'
-    : ready
-      ? 'No matches in this view'
-      : 'Your matchday starts here';
-  const hint = ready
-    ? 'Try a different date, competition or status filter.'
-    : 'Add your API keys in Vercel, or preview the sample matches above.';
-  return `<div class="empty"><strong>${title}</strong>${hint}</div>`;
+  if (state.busy) return '<div class="empty"><strong>Loading matches…</strong>One moment.</div>';
+  if (!ready)
+    return '<div class="empty"><strong>Your matchday starts here</strong>Add your API keys in Vercel, or preview the sample matches above.</div>';
+
+  // Matches exist, just not under this tab or search: say so, and offer the tabs that have some.
+  if (state.fixtures.length) {
+    const counts = statusCounts();
+    const others = Object.keys(STATUS_TESTS).filter(
+      (status) => status !== state.status && status !== 'all' && counts[status] > 0,
+    );
+    if (state.query && !counts.all)
+      return `<div class="empty"><strong>No team matches “${esc(state.query)}”</strong>Check the spelling, or clear the search to see all ${state.fixtures.length} matches.</div>`;
+    const title = NONE_FOR[state.status] ?? 'No matches in this view';
+    const offers = others
+      .map(
+        (status) =>
+          `<button class="text-button" data-status="${status}">Show ${STATUS_LABELS[status].toLowerCase()} (${counts[status]})</button>`,
+      )
+      .join(' ');
+    const more = counts.all
+      ? `${counts.all} match${counts.all === 1 ? '' : 'es'} in this date range. `
+      : '';
+    return `<div class="empty"><strong>${title}</strong>${more}${offers}</div>`;
+  }
+  return '<div class="empty"><strong>No matches in this view</strong>Try a different date or competition.</div>';
 }
 
 export function renderMatches() {
@@ -57,7 +98,10 @@ export function renderMatches() {
     ? list.slice(0, shown).map(matchCard).join('')
     : emptyState();
   $('#more').classList.toggle('hidden', list.length <= shown);
-  $$('[data-status]').forEach((b) =>
-    b.classList.toggle('active', b.dataset.status === state.status),
-  );
+  const counts = state.fixtures.length ? statusCounts() : null;
+  $$('.filter-tabs [data-status]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.status === state.status);
+    const status = b.dataset.status;
+    b.textContent = STATUS_LABELS[status] + (counts ? ` (${counts[status]})` : '');
+  });
 }
