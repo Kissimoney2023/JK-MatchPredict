@@ -16,6 +16,7 @@ import {createReminders} from './service/reminders.mjs';
 import {createPickOfTheDay} from './service/potd.mjs';
 import {createShares} from './service/shares.mjs';
 import {createSupabase} from './supabase.mjs';
+import {settle} from './model.mjs';
 
 export {AppError} from './errors.mjs';
 export {hash, dates} from './util.mjs';
@@ -77,7 +78,9 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
   });
   const shares = createShares({supabase, pickStore, storage, now});
   const accounts = createAccounts({env, supabase, storage, now, mergePicks});
-  const potd = createPickOfTheDay({env, now, storage, fixtures, forecast});
+  // Looks up a finished match and says whether the pick was right (null while it is not over).
+  const settleMatch = async (item, outcome) => settle((await lookup.fresh(item)).raw, outcome);
+  const potd = createPickOfTheDay({env, now, storage, fixtures, forecast, settleMatch});
   const reminders = createReminders({env, now, storage, pickStore, settleDue, send: sendPush});
   const prefetch = createPrefetch({
     env,

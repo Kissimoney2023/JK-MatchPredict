@@ -1,4 +1,5 @@
 import {todayIso} from '../util.mjs';
+import {wilson} from '../pickstats.mjs';
 
 const DEFAULT_COMPETITIONS = 'CL,PL,PD,BL1,SA,FL1';
 const LOOKAHEAD_MS = 36 * 3_600_000; // matches starting within this long are candidates
@@ -12,6 +13,12 @@ const LAZY_BUDGET_MS = 8_000;
 const LAZY_WINDOW_MS = 20 * 60_000; // at most one visitor-triggered run per window, site-wide
 const KEY = 'potd/current';
 const ATTEMPT = 'potd/attempt';
+const HISTORY = 'potd/history'; // every pick that was shown, with its result once known
+const MAX_HISTORY = 300;
+const SETTLE_AFTER_MS = 105 * 60_000; // matches are rarely over sooner than this
+const SETTLE_WINDOW_MS = 5 * 24 * 3_600_000; // older unsettled picks are left alone
+const SETTLE_PER_RUN = 5; // result lookups cost provider requests
+const MIN_RECORD = 5; // below this the track record is shown as "too few to judge"
 
 /**
  * "Picks of the day": the upcoming matches in the main competitions whose forecast has the
@@ -23,7 +30,7 @@ const ATTEMPT = 'potd/attempt';
  * opens the page (the job has not run yet), one visitor per 20 minutes triggers a smaller run
  * so the dashboard is not empty; everyone else just reads the stored result.
  */
-export function createPickOfTheDay({env, now, storage, fixtures, forecast}) {
+export function createPickOfTheDay({env, now, storage, fixtures, forecast, settleMatch}) {
   const {read, atomic} = storage;
 
   const competitions = () =>
@@ -73,6 +80,9 @@ export function createPickOfTheDay({env, now, storage, fixtures, forecast}) {
     probability: record.analysis.probability,
     margin: record.analysis.margin,
     source: record.source,
+    provider: f.provider,
+    fdCode: f.fdCode,
+    canonicalLeague: f.canonicalLeague,
   });
 
   /** Chooses and stores the picks. Never throws; a failed run keeps the previous result. */
@@ -104,6 +114,7 @@ export function createPickOfTheDay({env, now, storage, fixtures, forecast}) {
       checked,
       picks: chosen.slice(0, KEEP),
     }));
+    await recordPicks(chosen.slice(0, KEEP));
     return {
       candidates: pool.length,
       checked,
@@ -112,12 +123,102 @@ export function createPickOfTheDay({env, now, storage, fixtures, forecast}) {
     };
   }
 
+  /**
+   * Remembers each pick that was shown (once), so its result can be recorded afterwards. The
+   * track record therefore covers exactly what visitors were shown, good or bad.
+   */
+  async function recordPicks(picks) {
+    try {
+      await atomic(HISTORY, (old) => {
+        const items = old?.items ?? [];
+        const known = new Set(items.map((i) => i.key));
+        const fresh = picks
+          .filter((p) => !known.has(p.key))
+          .map((p) => ({
+            key: p.key,
+            home: p.home,
+            away: p.away,
+            competition: p.competition,
+            kickoff: p.kickoff,
+            outcomeIndex: p.outcomeIndex,
+            predictedOutcome: p.predictedOutcome,
+            probability: p.probability,
+            provider: p.provider,
+            fdCode: p.fdCode,
+            canonicalLeague: p.canonicalLeague,
+            shownAt: now(),
+            result: null,
+            score: null,
+          }));
+        return fresh.length ? {items: [...fresh, ...items].slice(0, MAX_HISTORY)} : undefined;
+      });
+    } catch (e) {
+      console.error('pick of the day history failed', e?.message ?? e);
+    }
+  }
+
+  /**
+   * Looks up results for shown picks whose match should be over (at most five a run, never for
+   * matches older than five days) and records them. Failures just leave the pick unsettled.
+   */
+  async function settleHistory() {
+    if (!settleMatch) return 0;
+    const history = await read(HISTORY);
+    const t = now();
+    const due = (history?.items ?? [])
+      .filter((i) => {
+        const kickoff = Date.parse(i.kickoff);
+        return !i.result && kickoff + SETTLE_AFTER_MS < t && kickoff > t - SETTLE_WINDOW_MS;
+      })
+      .slice(0, SETTLE_PER_RUN);
+    const found = new Map();
+    for (const item of due) {
+      try {
+        const outcome = await settleMatch(item, item.outcomeIndex);
+        if (outcome) found.set(item.key, outcome);
+      } catch {
+        // The provider has nothing yet: try again next run.
+      }
+    }
+    if (!found.size) return 0;
+    await atomic(HISTORY, (old) => ({
+      items: (old?.items ?? []).map((i) =>
+        found.has(i.key) && !i.result
+          ? {...i, result: found.get(i.key).result, score: found.get(i.key).score ?? null}
+          : i,
+      ),
+    }));
+    return found.size;
+  }
+
+  /** How the picks of the day have done: correct of settled (void and unsettled not counted). */
+  async function trackRecord() {
+    const items = (await read(HISTORY))?.items ?? [];
+    const done = items.filter((i) => i.result === 'correct' || i.result === 'incorrect');
+    if (!done.length) return null;
+    const correct = done.filter((i) => i.result === 'correct').length;
+    const interval = wilson(correct, done.length);
+    return {
+      settled: done.length,
+      correct,
+      rate: interval.rate,
+      low: interval.low,
+      high: interval.high,
+      reliable: done.length >= MIN_RECORD,
+    };
+  }
+
   /** Recomputes unless a recent result exists (the scheduled job calls this every run). */
   async function refresh({force = false} = {}) {
     try {
+      // Results are recorded on every run, whether or not the picks are recomputed.
+      const settled = await settleHistory().catch((e) => {
+        console.error('pick of the day results failed', e?.message ?? e);
+        return 0;
+      });
       const old = await read(KEY);
-      if (!force && old && now() - old.computedAt < REFRESH_MS) return {skipped: true};
-      return await compute();
+      if (!force && old && now() - old.computedAt < REFRESH_MS) return {skipped: true, settled};
+      return {...(await compute()), settled};
     } catch (e) {
       console.error('pick of the day failed', e?.message ?? e);
       return {error: 'Pick of the day failed.'};
@@ -145,6 +246,11 @@ export function createPickOfTheDay({env, now, storage, fixtures, forecast}) {
    * page that a first computation is under way, so it can say so and look again shortly.
    */
   async function current() {
+    const result = await currentPicks();
+    return result.picks.length ? {...result, record: await trackRecord()} : result;
+  }
+
+  async function currentPicks() {
     const before = await read(KEY);
     let picks = openPicks(before);
     let pending = false;

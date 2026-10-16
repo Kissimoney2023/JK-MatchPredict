@@ -25,6 +25,17 @@ function pickCard(p, rank) {
   </article>`;
 }
 
+const percent = (v) => Math.round(Number(v) * 100);
+
+/** How the picks shown here have turned out so far: honest about small samples. */
+function recordLine(record) {
+  if (!record || !(record.settled > 0)) return '';
+  const done = `${Number(record.correct)} of ${Number(record.settled)}`;
+  return record.reliable
+    ? `<p class="muted potd-record">Track record of the picks shown here: <strong>${done}</strong> correct (${percent(record.rate)}%, 95% range ${percent(record.low)}–${percent(record.high)}%).</p>`
+    : `<p class="muted potd-record">Track record so far: ${done} correct. Too few finished matches to judge yet.</p>`;
+}
+
 /** The card for one to three stored picks (everything is escaped; numbers are numbers). */
 export function potdCards(data) {
   const picks = data.picks.slice(0, 3);
@@ -35,7 +46,7 @@ export function potdCards(data) {
   return `<div class="eyebrow">PICKS OF THE DAY</div>
   <h2>${WORDS[picks.length]} to win today</h2>
   <div class="potd-grid">${picks.map((p, i) => pickCard(p, i + 1)).join('')}</div>
-  <p class="muted">${esc(scope)} Probabilities, not certainties: even a 70% favourite fails three times in ten. Virtual picks only; not betting advice.</p>`;
+  <p class="muted">${esc(scope)} Probabilities, not certainties: even a 70% favourite fails three times in ten. Virtual picks only; not betting advice.</p>${recordLine(data.record)}`;
 }
 
 const PENDING =

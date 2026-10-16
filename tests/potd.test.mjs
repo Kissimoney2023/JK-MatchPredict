@@ -164,7 +164,7 @@ test('a scheduled result is not recomputed within six hours, and force recompute
   await x.potd.refresh();
   const before = x.calls.forecasts.length;
   x.advance(2 * HOUR);
-  assert.deepEqual(await x.potd.refresh(), {skipped: true});
+  assert.deepEqual(await x.potd.refresh(), {skipped: true, settled: 0});
   assert.equal(x.calls.forecasts.length, before);
   await x.potd.refresh({force: true});
   assert.ok(x.calls.forecasts.length > before);
@@ -298,4 +298,162 @@ test('the card title follows the number of picks', async () => {
   const {potdCards} = await import('../public/js/views/potd.js');
   assert.match(potdCards({checked: 1, picks: [sample()]}), /Top pick to win today/);
   assert.match(potdCards({checked: 3, picks: [sample(), sample({key: 'ap:2'})]}), /Top 2 picks/);
+});
+
+// ---------- the track record ----------
+
+/** A pick-of-the-day service whose result lookups are controlled by `outcomes` (key -> result). */
+function setupRecord({fixtureDays, forecasts, outcomes}) {
+  let clock = base;
+  const store = createMemoryStore();
+  const storage = createStorage({store, now: () => clock});
+  const lookups = [];
+  const potd = createPickOfTheDay({
+    env: {},
+    now: () => clock,
+    storage,
+    fixtures: async (params) => ({
+      fixtures: fixtureDays[params.get('from')] ?? [],
+      listingId: 'listing-' + params.get('from'),
+    }),
+    forecast: async (key) => forecasts[key],
+    settleMatch: async (item, outcomeIndex) => {
+      lookups.push(item.key);
+      const known = outcomes[item.key];
+      if (known === 'error') throw new Error('provider down');
+      if (!known) return null; // not finished yet
+      return known === 'void'
+        ? {result: 'void', score: null}
+        : {result: known === 'win' ? 'correct' : 'incorrect', score: '2–1', outcomeIndex};
+    },
+  });
+  return {potd, store, lookups, advance: (ms) => (clock += ms)};
+}
+
+const threePicks = () => ({
+  fixtureDays: {[TODAY]: [fx('a', 'PL', 3), fx('b', 'PD', 4), fx('c', 'SA', 5)]},
+  forecasts: {a: record([70, 20, 10]), b: record([64, 22, 14]), c: record([58, 24, 18])},
+});
+
+test('every pick that was shown is remembered once, even across recomputations', async () => {
+  const x = setupRecord({...threePicks(), outcomes: {}});
+  await x.potd.refresh();
+  await x.potd.refresh({force: true});
+  await x.potd.refresh({force: true});
+  const history = await x.store.get('potd/history', {type: 'json'});
+  assert.deepEqual(history.items.map((i) => i.key).sort(), ['a', 'b', 'c']);
+  assert.ok(history.items.every((i) => i.result === null));
+});
+
+test('results are recorded after the match, never before, and counted in the record', async () => {
+  const x = setupRecord({...threePicks(), outcomes: {a: 'win', b: 'loss', c: 'win'}});
+  await x.potd.refresh();
+  assert.equal(x.lookups.length, 0, 'nothing is looked up for matches that have not started');
+
+  x.advance(3 * HOUR); // a has kicked off but is not over: its lookup finds nothing yet
+  const early = await x.potd.refresh();
+  assert.equal(early.settled, 0);
+  x.advance(5 * HOUR); // now every match should be over
+  const later = await x.potd.refresh();
+  assert.ok(later.settled >= 1);
+  await x.potd.refresh();
+
+  const history = await x.store.get('potd/history', {type: 'json'});
+  const byKey = Object.fromEntries(history.items.map((i) => [i.key, i.result]));
+  assert.deepEqual(byKey, {a: 'correct', b: 'incorrect', c: 'correct'});
+});
+
+test('the record is attached to the picks shown, and is flagged unreliable until five have finished', async () => {
+  const x = setupRecord({...threePicks(), outcomes: {a: 'win', b: 'loss', c: 'win'}});
+  await x.potd.refresh();
+  x.advance(5 * HOUR);
+  await x.potd.refresh();
+  await x.potd.refresh();
+  // A newer pick is shown after the first three have finished.
+  const later = fx('later', 'PL', 20);
+  const stillOpen = setupRecord({
+    fixtureDays: {[TODAY]: [later]},
+    forecasts: {later: record([66, 20, 14])},
+    outcomes: {},
+  });
+  await stillOpen.store.setJSON('potd/history', {
+    items: [
+      {key: 'x1', result: 'correct'},
+      {key: 'x2', result: 'incorrect'},
+      {key: 'x3', result: 'correct'},
+      {key: 'x4', result: 'void'},
+      {key: 'x5', result: null},
+    ],
+  });
+  await stillOpen.potd.refresh();
+  const r = (await stillOpen.potd.current()).record;
+  assert.deepEqual([r.settled, r.correct, r.reliable], [3, 2, false]);
+
+  await stillOpen.store.setJSON('potd/history', {
+    items: Array.from({length: 10}, (_, i) => ({
+      key: 'k' + i,
+      result: i < 7 ? 'correct' : 'incorrect',
+    })),
+  });
+  const big = (await stillOpen.potd.current()).record;
+  assert.deepEqual([big.settled, big.correct, big.reliable], [10, 7, true]);
+  assert.ok(big.low < 0.7 && big.high > 0.7 && big.rate === 0.7);
+});
+
+test('result lookups are limited per run, skip old matches and survive provider errors', async () => {
+  const x = setupRecord({fixtureDays: {}, forecasts: {}, outcomes: {}});
+  const items = Array.from({length: 8}, (_, i) => ({
+    key: 'p' + i,
+    kickoff: new Date(base - 3 * HOUR - i * MIN).toISOString(),
+    outcomeIndex: 0,
+    result: null,
+  }));
+  items.push({
+    key: 'ancient',
+    kickoff: new Date(base - 8 * 24 * HOUR).toISOString(),
+    outcomeIndex: 0,
+    result: null,
+  });
+  items.push({
+    key: 'future',
+    kickoff: new Date(base + 2 * HOUR).toISOString(),
+    outcomeIndex: 0,
+    result: null,
+  });
+  await x.store.setJSON('potd/history', {items});
+  await x.potd.refresh();
+  assert.equal(x.lookups.length, 5, 'at most five lookups per run');
+  assert.ok(!x.lookups.includes('ancient') && !x.lookups.includes('future'));
+
+  const failing = setupRecord({fixtureDays: {}, forecasts: {}, outcomes: {p0: 'error'}});
+  await failing.store.setJSON('potd/history', {items: [items[0]]});
+  const run = await failing.potd.refresh();
+  assert.equal(run.settled, 0, 'an error leaves the pick unsettled');
+  const kept = await failing.store.get('potd/history', {type: 'json'});
+  assert.equal(kept.items[0].result, null, 'and it is retried next run');
+});
+
+test('the card shows the record, or says there are too few matches to judge', async () => {
+  const {potdCards} = await import('../public/js/views/potd.js');
+  const picks = [sample()];
+  const few = potdCards({
+    checked: 3,
+    picks,
+    record: {settled: 3, correct: 2, rate: 0.667, low: 0.2, high: 0.94, reliable: false},
+  });
+  assert.match(few, /Track record so far: 2 of 3 correct\. Too few finished matches to judge yet/);
+  const many = potdCards({
+    checked: 3,
+    picks,
+    record: {settled: 20, correct: 13, rate: 0.65, low: 0.43, high: 0.82, reliable: true},
+  });
+  assert.match(many, /<strong>13 of 20<\/strong> correct \(65%, 95% range 43–82%\)/);
+  assert.ok(!potdCards({checked: 3, picks, record: null}).includes('Track record'));
+  assert.ok(!potdCards({checked: 3, picks}).includes('Track record'));
+  const hostile = potdCards({
+    checked: 1,
+    picks,
+    record: {settled: '<b>x</b>', correct: '1', rate: 'NaN', low: 0, high: 1, reliable: true},
+  });
+  assert.ok(!hostile.includes('<b>'), 'record numbers are coerced to numbers');
 });
