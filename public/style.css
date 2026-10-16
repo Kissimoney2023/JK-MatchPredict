@@ -1509,3 +1509,30 @@ progress::-moz-progress-bar {
   font-size: 22px;
   white-space: nowrap;
 }
+
+/* ---------- Other matches that day ---------- */
+.other-matches {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.other-matches li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.other-matches li > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.other-matches strong {
+  overflow-wrap: anywhere;
+}

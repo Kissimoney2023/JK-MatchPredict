@@ -1,6 +1,7 @@
 import {analyze} from '/analysis.js';
 import {$, esc, formatDate} from '../dom.js';
 import {state} from '../state.js';
+import {otherMatches, otherMatchesTitle} from '../othermatches.js';
 
 const outcomeLabels = (f) => [f.home, 'Draw', f.away];
 
@@ -25,6 +26,21 @@ function goalsBlock(goals) {
   return `<h3>Goals · model estimate</h3><div class="goal-lines">${lines}${btts}</div><p class="muted">Estimated from expected goals with independent scoring over 90 minutes. Lineups and player availability are not considered.</p>`;
 }
 
+const timeOf = (iso) => new Date(iso).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+
+/** Other matches from the same day in the list being browsed, each one tap from its own forecast. */
+function otherMatchesBlock(f) {
+  const rows = otherMatches(state.fixtures, f);
+  if (!rows.length) return '';
+  const items = rows
+    .map(
+      (m) =>
+        `<li><div><strong>${esc(m.home)} vs ${esc(m.away)}</strong><small class="muted">${esc(m.competition)} · ${esc(timeOf(m.kickoff))}</small></div><button class="text-button" data-analyze="${esc(m.key)}">Analyse</button></li>`,
+    )
+    .join('');
+  return `<h3>${esc(otherMatchesTitle(f))}</h3><ul class="other-matches">${items}</ul><p class="muted">From the matches you are browsing; times are in your local time.</p>`;
+}
+
 function sourceBlock(f) {
   return `<div class="analysis-source"><strong>Source:</strong> ${esc(f.source)}<br>Forecast created ${esc(formatDate(f.forecastAt))}${f.providerFetchedAt ? '<br>Provider data fetched ' + esc(formatDate(f.providerFetchedAt)) : ''}${f.historyFetchedAt ? '<br>History fetched ' + esc(formatDate(f.historyFetchedAt)) : ''}${f.explanation ? '<br>' + esc(f.explanation) : ''}</div>`;
 }
@@ -46,7 +62,9 @@ export function showAnalysis(f) {
     goalsBlock(a.goals) +
     `<h3>Make a virtual pick</h3><div class="pick-buttons">${[0, 1, 2].map(pickButton(f)).join('')}</div>` +
     `<div id="save-message" role="status">${demoNote}</div>` +
+    otherMatchesBlock(f) +
     '<div id="insights"></div>' +
     sourceBlock(f);
   if (!$('#analysis').open) $('#analysis').showModal();
+  $('#analysis').scrollTop = 0; // opening another match from the list starts at its top
 }
