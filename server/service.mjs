@@ -36,6 +36,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
     history,
     lookup,
     strikerApi,
+    standings,
   });
   // Fixture lists include each team's recent form when its history is already cached.
   const fixturesWithForm = async (params) => {

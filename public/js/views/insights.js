@@ -1,5 +1,5 @@
 import {api} from '../api.js';
-import {$, esc} from '../dom.js';
+import {$, esc, formatDate} from '../dom.js';
 import {state} from '../state.js';
 
 const WORDS = {W: 'win', D: 'draw', L: 'loss'};
@@ -112,13 +112,30 @@ function observedGoals(goals) {
   return `<h3>Recent goal trends</h3><div class="goal-lines">${lines}<div class="goal-line"><span class="goal-name">Both score</span><span>Yes <strong>${pct(goals.btts)}%</strong></span><progress max="100" value="${pct(goals.btts)}" aria-label="Both teams scored: ${pct(goals.btts)}%">${pct(goals.btts)}%</progress><span>No <strong>${100 - pct(goals.btts)}%</strong></span></div></div><p class="muted">What actually happened across ${goals.matches} recent matches of these two teams. Past frequencies, not a prediction.</p>`;
 }
 
+const ordinal = (n) => {
+  const rest = n % 100;
+  if (rest >= 11 && rest <= 13) return n + 'th';
+  return n + (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+};
+
+/** Table positions of the two teams, as two tiles (a team the table does not list is skipped). */
+function positionBlock(position, names) {
+  if (!position) return '';
+  const tile = (name, row) =>
+    row
+      ? `<div class="stat-tile"><span class="stat-label">${esc(name)}</span><strong>${esc(ordinal(row.position))} of ${row.of}</strong><span class="stat-sub">${row.points} pts · ${row.won}W ${row.drawn}D ${row.lost}L · GD ${row.goalDifference > 0 ? '+' : ''}${row.goalDifference}${row.group ? ' · ' + esc(row.group) : ''}</span></div>`
+      : '';
+  const when = position.fetchedAt ? ' · updated ' + esc(formatDate(position.fetchedAt)) : '';
+  const copy = position.stale ? ' (saved copy)' : '';
+  return `<h3>League position</h3><div class="stat-tiles position-tiles">${tile(names.home, position.home)}${tile(names.away, position.away)}</div><p class="muted">${esc(position.competition)}${position.season ? ' · ' + esc(position.season) + ' season' : ''}${when}${copy} · source: ${esc(position.source)}</p>`;
+}
+
 function render(data) {
   const sections = [];
   const forecast = state.analysis ?? {};
-  if (data.stats) {
-    const names = {home: forecast.home, away: forecast.away};
-    sections.push(statsBlock(data.stats, names), observedGoals(data.stats.goals));
-  }
+  const names = {home: forecast.home, away: forecast.away};
+  sections.push(positionBlock(data.leaguePosition, names));
+  if (data.stats) sections.push(statsBlock(data.stats, names), observedGoals(data.stats.goals));
   if (data.home && data.away)
     sections.push(
       `<h3>Form &amp; head-to-head</h3><div class="insight-grid">${teamColumn(data.home)}${teamColumn(data.away)}</div><h4>Recent meetings</h4>${headToHeadBlock(data)}`,

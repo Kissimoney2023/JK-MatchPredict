@@ -1,5 +1,6 @@
 import {AppError} from '../errors.mjs';
 import {goalRates, headToHead, recentForm, teamStats} from '../form.mjs';
+import {sameTeam} from '../strikerapi.mjs';
 
 const FORM_GAMES = 5;
 const teamIdsOf = (items) => [
@@ -9,7 +10,7 @@ const teamIdsOf = (items) => [
 ];
 
 /** Team form and head-to-head, derived from the cached football-data.org histories. */
-export function createInsights({env, now, storage, history, lookup, strikerApi}) {
+export function createInsights({env, now, storage, history, lookup, strikerApi, standings}) {
   const {read} = storage;
 
   /**
@@ -34,6 +35,51 @@ export function createInsights({env, now, storage, history, lookup, strikerApi})
       const away = formOf(f.awayTeamId);
       return home || away ? {...f, form: {home, away}} : f;
     });
+  }
+
+  /**
+   * Where each team stands in the competition table (from the cached standings), or null when
+   * there is no table or neither club can be found in it unambiguously. Never throws: a
+   * missing position must not hide the rest of the insights.
+   */
+  async function leaguePosition(known) {
+    try {
+      if (!standings || !known.leagueKey) return null;
+      const table = await standings(known.leagueKey);
+      const find = (name) => {
+        const hits = [];
+        for (const group of table.groups)
+          for (const r of group.table)
+            if (sameTeam(r.team, name)) hits.push({r, size: group.table.length, group: group.name});
+        if (hits.length !== 1) return null; // absent, or ambiguous: say nothing rather than guess
+        const {r, size, group} = hits[0];
+        return {
+          position: r.position,
+          of: size,
+          group,
+          played: r.played,
+          won: r.won,
+          drawn: r.drawn,
+          lost: r.lost,
+          points: r.points,
+          goalDifference: r.goalDifference,
+        };
+      };
+      const home = find(known.home);
+      const away = find(known.away);
+      if (!home && !away) return null;
+      return {
+        competition: table.competition,
+        season: table.season,
+        source: table.source,
+        fetchedAt: table.fetchedAt,
+        stale: !!table.stale,
+        home,
+        away,
+      };
+    } catch {
+      return null;
+    }
   }
 
   /** Recent form and last-12-months meetings from football-data.org histories (may fetch two). */
@@ -84,7 +130,7 @@ export function createInsights({env, now, storage, history, lookup, strikerApi})
     const known = listing?.items?.find((f) => f.key === key);
     if (!known) throw new AppError(404, 'fixture', 'Load this match from the match browser first.');
 
-    const [form, market, elo, competitionHeadToHead] = await Promise.all([
+    const [form, market, elo, competitionHeadToHead, position] = await Promise.all([
       env.FOOTBALL_DATA_ORG_KEY
         ? formInsights(known).then(
             (value) => value,
@@ -94,11 +140,12 @@ export function createInsights({env, now, storage, history, lookup, strikerApi})
       strikerApi.marketFor(known),
       strikerApi.eloFor(known),
       strikerApi.headToHeadFor(known),
+      leaguePosition(known),
     ]);
     const formResult = form?.error ? null : form;
-    const extras = {market, elo, competitionHeadToHead};
+    const extras = {market, elo, competitionHeadToHead, leaguePosition: position};
     // Nothing at all to show: surface the form error instead of an empty panel.
-    if (!formResult && !market && !elo && !competitionHeadToHead)
+    if (!formResult && !market && !elo && !competitionHeadToHead && !position)
       throw (
         form?.error ?? new AppError(404, 'insights', 'No insights are available for this match.')
       );
