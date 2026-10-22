@@ -61,7 +61,7 @@ export function analyze(f) {
           ? 'Stronger favorite'
           : 'Moderate favorite',
     tips,
-    goals: f.expectedGoals ? goalMarkets(f.expectedGoals) : null,
+    goals: f.goals ?? (f.expectedGoals ? goalMarkets(f.expectedGoals) : null),
     verdict:
       margin < 8 || top < 45
         ? 'Consider skipping this match: the forecast does not separate the outcomes strongly.'
@@ -91,3 +91,10 @@ export function goalMarkets([home, away]) {
   }
   return {lines, btts: pct((1 - Math.exp(-home)) * (1 - Math.exp(-away)))};
 }
+
+/**
+ * Fair decimal odds for a probability in percent: 1 ÷ probability, with no bookmaker margin.
+ * A price below this offers no value by that forecast; a price above it would. Null for 0%.
+ */
+export const fairOdds = (percent) =>
+  Number.isFinite(percent) && percent > 0 ? Math.round((100 / percent) * 100) / 100 : null;

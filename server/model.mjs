@@ -16,9 +16,10 @@ export function isOpen(f, now = Date.now()) {
     f?.status === 'NS' && Number.isFinite(Date.parse(f.kickoff)) && Date.parse(f.kickoff) > now
   );
 }
-export function settle(raw, outcome) {
+/** The finished regulation-time score, `{void: true}` for a cancelled match, null while open. */
+export function finalScore(raw) {
   const status = raw?.fixture?.status?.short;
-  if (['CANC', 'ABD', 'AWD', 'WO'].includes(status)) return {result: 'void', score: null};
+  if (['CANC', 'ABD', 'AWD', 'WO'].includes(status)) return {void: true};
   if (!['FT', 'AET', 'PEN'].includes(status)) return null;
   const score = raw.score?.fulltime;
   if (
@@ -28,11 +29,77 @@ export function settle(raw, outcome) {
     score.away < 0
   )
     return null;
+  return {home: score.home, away: score.away};
+}
+
+export const GOAL_LINES = [0.5, 1.5, 2.5, 3.5];
+
+/**
+ * Settles one selection against the final score. Markets: 'result' (outcome 0/1/2 = home win,
+ * draw, away win) and 'totals' (outcome 0 = over `line` goals, 1 = under). Null while the
+ * match is not finished; 'void' when it was cancelled or awarded.
+ */
+export function settleSelection(raw, {market = 'result', line, outcome}) {
+  const score = finalScore(raw);
+  if (!score) return null;
+  if (score.void) return {result: 'void', score: null};
+  const text = `${score.home}–${score.away}`;
+  if (market === 'totals') {
+    const over = score.home + score.away > Number(line);
+    return {result: (outcome === 0) === over ? 'correct' : 'incorrect', score: text};
+  }
   const actual = score.home > score.away ? 0 : score.home === score.away ? 1 : 2;
-  return {
-    result: outcome === actual ? 'correct' : 'incorrect',
-    score: `${score.home}–${score.away}`,
+  return {result: outcome === actual ? 'correct' : 'incorrect', score: text};
+}
+
+/** A home/draw/away pick against the final score (the original, single-market form). */
+export const settle = (raw, outcome) => settleSelection(raw, {market: 'result', outcome});
+
+/** Poisson chance of more than `line` goals, and of fewer (a whole-number line can push). */
+function poissonOverUnder(lambda, line) {
+  let term = Math.exp(-lambda);
+  let under = 0;
+  let upTo = 0; // P(total <= floor(line))
+  for (let k = 0; k <= Math.floor(line); k++) {
+    if (k < line) under += term;
+    upTo += term;
+    term = (term * lambda) / (k + 1);
+  }
+  return {over: 1 - upTo, under};
+}
+
+/**
+ * Over/Under probabilities (percent) from the bookmakers' total line: the goal total at which
+ * over and under are priced evenly. Assumes Poisson-distributed total goals, and solves for
+ * the rate that makes over and under equally likely at that line (pushes excluded). Null for
+ * an unusable line. No both-teams-to-score: a total says nothing about how goals split.
+ */
+export function goalsFromTotalLine(total) {
+  const line = Number(total);
+  if (!Number.isFinite(line) || line <= 0 || line > 8) return null;
+  // A quarter line (2.75) is half a bet on each neighbouring line (2.5 and 3.0).
+  const quarter = Math.round(line * 4) % 2 === 1;
+  const at = (lambda) => {
+    if (!quarter) return poissonOverUnder(lambda, line);
+    const a = poissonOverUnder(lambda, line - 0.25);
+    const b = poissonOverUnder(lambda, line + 0.25);
+    return {over: (a.over + b.over) / 2, under: (a.under + b.under) / 2};
   };
+  let lo = 0.1;
+  let hi = 10;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    const {over, under} = at(mid);
+    if (over > under) hi = mid;
+    else lo = mid;
+  }
+  const lambda = (lo + hi) / 2;
+  const pct = (x) => Math.round(Math.min(1, Math.max(0, x)) * 1000) / 10;
+  const lines = GOAL_LINES.map((l) => {
+    const over = pct(poissonOverUnder(lambda, l).over);
+    return {line: l, over, under: Math.round((100 - over) * 10) / 10};
+  });
+  return {lines, btts: null, expectedTotal: Math.round(lambda * 100) / 100};
 }
 export function normalizeFixture(raw) {
   if (

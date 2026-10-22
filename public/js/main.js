@@ -129,12 +129,13 @@ const analyzeMatch = (key, listing = state.listing) =>
     loadInsights(forecast.key, listing); // optional extra; does not block or fail the forecast
   });
 
-const savePick = (outcome) =>
+/** Saves a pick: {outcome} for home/draw/away, {market: 'totals', line, outcome} for Over/Under. */
+const savePick = (selection) =>
   run(async () => {
     const result = await api(
       'save',
       {},
-      {action: 'save', forecastId: state.analysis.forecastId, outcome},
+      {action: 'save', forecastId: state.analysis.forecastId, ...selection},
     );
     message(
       result.saved
@@ -181,7 +182,13 @@ function onButtonClick(e) {
   }
   if (b.hasAttribute('data-remove-pick')) removePickClick(b);
   if (b.dataset.analyze) analyzeMatch(b.dataset.analyze, b.dataset.listing || state.listing);
-  if (b.hasAttribute('data-save')) savePick(Number(b.dataset.save));
+  if (b.hasAttribute('data-save')) savePick({outcome: Number(b.dataset.save)});
+  if (b.hasAttribute('data-save-totals'))
+    savePick({
+      market: 'totals',
+      line: Number(b.dataset.line),
+      outcome: Number(b.dataset.saveTotals),
+    });
 }
 
 // ---- Wiring ---------------------------------------------------------------

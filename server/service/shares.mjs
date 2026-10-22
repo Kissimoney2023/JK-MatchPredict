@@ -1,14 +1,13 @@
 import {randomBytes} from 'node:crypto';
 import {AppError} from '../errors.mjs';
 import {HOUR} from '../util.mjs';
-import {accuracyTrend, summarizePicks} from '../pickstats.mjs';
+import {accuracyTrend, pickLabel, pickProbability, summarizePicks} from '../pickstats.mjs';
 
 const SHARE_ID_FORMAT = /^[A-Za-z0-9_-]{12}$/;
 const RECENT_PICKS = 10;
 const TOP_COMPETITIONS = 5;
 const MAX_TREND_POINTS = 60;
 const MIN_TREND_SETTLED = 5;
-const OUTCOME_NAMES = (p) => [`${p.forecast.home} win`, 'Draw', `${p.forecast.away} win`];
 
 /** Whether a string looks like a share id (so odd URLs never reach the database). */
 export const isShareId = (id) => SHARE_ID_FORMAT.test(String(id || ''));
@@ -60,8 +59,8 @@ export function buildSnapshot(picks, now) {
       home: p.forecast.home,
       away: p.forecast.away,
       competition: p.forecast.competition,
-      pick: OUTCOME_NAMES(p)[p.outcome],
-      probability: p.forecast.p?.[p.outcome] ?? null,
+      pick: pickLabel(p),
+      probability: Number.isFinite(pickProbability(p)) ? pickProbability(p) : null,
       result: p.result,
       score: p.score ?? null,
       date: String(p.forecast.kickoff).slice(0, 10),

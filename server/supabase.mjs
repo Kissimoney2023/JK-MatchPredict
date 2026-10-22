@@ -88,7 +88,13 @@ export function createSupabase({url, key, authKey, fetcher}) {
           'auth',
           authFailure(response.status, detail, {fallbackKey: !authKey}),
         );
-      throw new AppError(502, 'database', 'The database is temporarily unavailable.');
+      // `detail` (never shown to people) lets callers tell a missing column from an outage.
+      throw Object.assign(
+        new AppError(502, 'database', 'The database is temporarily unavailable.'),
+        {
+          detail,
+        },
+      );
     }
     const text = await response.text();
     return text ? JSON.parse(text) : null;

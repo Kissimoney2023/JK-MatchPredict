@@ -51,6 +51,46 @@ export function summarize(predictions) {
 
 const toFractions = (percent) => percent.map((v) => v / 100);
 
+/** Binary metrics for one-sided probabilities (`p` = chance of "yes", `yes` = what happened). */
+export function summarizeBinary(predictions) {
+  const n = predictions.length;
+  if (!n) return {n: 0};
+  let logLoss = 0;
+  let brier = 0;
+  let correct = 0;
+  let said = 0;
+  let happened = 0;
+  const bins = Array.from({length: 10}, () => ({sum: 0, hits: 0, n: 0}));
+  for (const {p, yes} of predictions) {
+    const q = Math.min(1 - EPS, Math.max(EPS, p));
+    logLoss -= Math.log(yes ? q : 1 - q);
+    brier += (q - (yes ? 1 : 0)) ** 2;
+    correct += q >= 0.5 === !!yes ? 1 : 0;
+    said += q;
+    happened += yes ? 1 : 0;
+    const bin = bins[Math.min(9, Math.floor(q * 10))];
+    bin.sum += q;
+    bin.n++;
+    if (yes) bin.hits++;
+  }
+  return {
+    n,
+    accuracy: correct / n,
+    logLoss: logLoss / n,
+    brier: brier / n,
+    said: said / n,
+    happened: happened / n,
+    calibration: bins
+      .map((b, i) => ({
+        range: `${i * 10}-${i * 10 + 10}%`,
+        predicted: b.n ? b.sum / b.n : null,
+        observed: b.n ? b.hits / b.n : null,
+        n: b.n,
+      }))
+      .filter((b) => b.n),
+  };
+}
+
 /** Result objects -> raw-looking football-data rows, so the legacy model can be compared. */
 const asRows = (results) =>
   results.map((r, i) => ({
@@ -89,7 +129,20 @@ export function backtest(
   // When results carry a bookmaker line (`market`: three fractions), it is scored too, on the
   // same matches, and matches without one are skipped for every model.
   const withMarket = sorted.some((r) => r.market);
-  const predictions = {ratings: [], prior: [], legacy: [], ...(withMarket ? {market: []} : {})};
+  // `blend` (0..1): how much of the bookmaker line to mix into the ratings model's probabilities
+  // (0 = pure model). Only meaningful when a market line is present.
+  const blend = withMarket && options.blend > 0 ? options.blend : 0;
+  const predictions = {
+    ratings: [],
+    prior: [],
+    legacy: [],
+    ...(withMarket ? {market: []} : {}),
+    ...(blend ? {blend: []} : {}),
+  };
+  // Over 2.5 goals: the model's chance versus the bookmakers' (`over25`, a fraction), when the
+  // results carry one. Scored only on matches that have a market price for it.
+  const withTotals = sorted.some((r) => Number.isFinite(r.over25));
+  const totals = withTotals ? {ratings: [], market: []} : null;
   let skipped = 0;
 
   for (let windowStart = start; windowStart <= end; windowStart += refitDays * DAY) {
@@ -124,17 +177,36 @@ export function backtest(
         continue;
       }
       const outcome = outcomeOf(r);
-      predictions.ratings.push({p: toFractions(modelPrediction.p), outcome});
+      const model = toFractions(modelPrediction.p);
+      predictions.ratings.push({p: model, outcome});
       predictions.legacy.push({p: toFractions(legacy.p), outcome});
       predictions.prior.push({p: prior, outcome});
       if (withMarket) predictions.market.push({p: r.market, outcome});
+      if (blend)
+        predictions.blend.push({
+          p: model.map((v, i) => (1 - blend) * v + blend * r.market[i]),
+          outcome,
+        });
+      if (totals && Number.isFinite(r.over25)) {
+        const line = modelPrediction.goals.lines.find((l) => l.line === 2.5);
+        const yes = r.hg + r.ag > 2.5;
+        totals.ratings.push({p: line.over / 100, yes});
+        totals.market.push({p: r.over25, yes});
+      }
     }
   }
 
   return {
     matches: predictions.ratings.length,
     skipped,
-    ...(keepPredictions ? {predictions} : {}),
+    ...(keepPredictions ? {predictions, ...(totals ? {totalsPredictions: totals} : {})} : {}),
     models: Object.fromEntries(Object.entries(predictions).map(([k, v]) => [k, summarize(v)])),
+    ...(totals
+      ? {
+          totals: Object.fromEntries(
+            Object.entries(totals).map(([k, v]) => [k, summarizeBinary(v)]),
+          ),
+        }
+      : {}),
   };
 }

@@ -118,6 +118,19 @@ function marketOf(get) {
   return null;
 }
 
+/** Bookmakers' chance of over 2.5 goals (margin removed): Pinnacle, else average, else Bet365. */
+function over25Of(get) {
+  for (const [over, under] of [
+    ['P>2.5', 'P<2.5'],
+    ['Avg>2.5', 'Avg<2.5'],
+    ['B365>2.5', 'B365<2.5'],
+  ]) {
+    const odds = [get(over), get(under)].map(Number);
+    if (odds.every((o) => Number.isFinite(o) && o > 1)) return devigShin(odds.map((o) => 1 / o))[0];
+  }
+  return undefined;
+}
+
 async function load(league) {
   const ids = new Map();
   const results = [];
@@ -154,6 +167,7 @@ async function load(league) {
         hg,
         ag,
         market: marketOf(get),
+        over25: over25Of(get),
         shotsH: num('HS'),
         shotsA: num('AS'),
         sotH: num('HST'),
@@ -291,6 +305,113 @@ const aggregate = {
   diffGoalsMarket: [],
 };
 
+// ---------- experiment: Dixon-Coles correction, market blend, Over/Under 2.5 ----------
+const improve = {
+  n: 0,
+  rhoChoices: [],
+  blendChoices: [],
+  diffDcPlain: [], // log loss, Dixon-Coles minus plain ratings
+  diffBlendMarket: [], // log loss, blend minus market
+  diffBlendDc: [], // log loss, blend minus Dixon-Coles model
+  totalsN: 0,
+  totalsModel: [], // binary log loss per match, model
+  totalsMarket: [], // binary log loss per match, market
+  totalsSaid: 0,
+  totalsHappened: 0,
+  totalsMarketSaid: 0,
+  totalsBins: Array.from({length: 10}, () => ({sum: 0, hits: 0, n: 0})),
+};
+
+const binaryLoss = (p, yes) => -Math.log(Math.max(1e-6, yes ? p : 1 - p));
+
+function runImprove(league, results) {
+  const RHOS = [0, -0.03, -0.06, -0.09, -0.12, -0.15];
+  const BLENDS = [0, 0.25, 0.5, 0.75, 0.9];
+  const withOver = results.filter((r) => Number.isFinite(r.over25)).length;
+  console.log(`Over/Under 2.5 bookmaker price available for ${withOver} matches`);
+
+  // 1. rho on validation.
+  const rhoRuns = RHOS.map((rho) => ({
+    rho,
+    logLoss: backtest(results, {testFrom: VALIDATION.from, testTo: VALIDATION.to, options: {rho}})
+      .models.ratings.logLoss,
+  }));
+  const bestRho = [...rhoRuns].sort((a, b) => a.logLoss - b.logLoss)[0].rho;
+  console.log(
+    'validation 2024/25 log loss by rho:',
+    rhoRuns.map((v) => `${v.rho}=${f3(v.logLoss)}`).join('  '),
+    `-> rho ${bestRho}`,
+  );
+
+  // 2. blend on validation, with that rho.
+  const blendRuns = BLENDS.map((blend) => {
+    const r = backtest(results, {
+      testFrom: VALIDATION.from,
+      testTo: VALIDATION.to,
+      options: {rho: bestRho, blend},
+    });
+    return {blend, logLoss: (blend ? r.models.blend : r.models.ratings).logLoss};
+  });
+  const bestBlend = [...blendRuns].sort((a, b) => a.logLoss - b.logLoss)[0].blend;
+  console.log(
+    'validation log loss by market weight:',
+    blendRuns.map((v) => `${v.blend}=${f3(v.logLoss)}`).join('  '),
+    `-> weight ${bestBlend}`,
+  );
+
+  // 3. Holdout, never seen by the tuning.
+  const plain = run(results, HOLDOUT, {rho: 0});
+  const dc = run(results, HOLDOUT, {rho: bestRho, blend: bestBlend});
+  const n = plain.matches;
+  if (!n) return;
+  const blended = bestBlend ? dc.models.blend : dc.models.ratings;
+  console.log(`HOLDOUT (${n} matches), rho ${bestRho}, market weight ${bestBlend}:`);
+  const line = (label, m) =>
+    console.log(`  ${label.padEnd(26)} log loss ${f3(m.logLoss)}  accuracy ${pct(m.accuracy)}`);
+  line('ratings, plain', plain.models.ratings);
+  line('ratings, Dixon-Coles', dc.models.ratings);
+  line('model + market blend', blended);
+  line('bookmaker closing line', plain.models.market);
+
+  const dcPreds = dc.predictions.ratings;
+  const blendPreds = bestBlend ? dc.predictions.blend : dc.predictions.ratings;
+  const both = {
+    predictions: {
+      plain: plain.predictions.ratings,
+      dc: dcPreds,
+      blend: blendPreds,
+      market: plain.predictions.market,
+    },
+  };
+  improve.n += n;
+  improve.rhoChoices.push(`${league}:${bestRho}`);
+  improve.blendChoices.push(`${league}:${bestBlend}`);
+  improve.diffDcPlain.push(...diffsOf(both, 'dc', 'plain'));
+  improve.diffBlendMarket.push(...diffsOf(both, 'blend', 'market'));
+  improve.diffBlendDc.push(...diffsOf(both, 'blend', 'dc'));
+
+  // 4. Over/Under 2.5 on the holdout: the Dixon-Coles model against the bookmakers.
+  const t = dc.totals;
+  if (t) {
+    console.log(
+      `  Over 2.5 (${t.ratings.n} matches): model log loss ${f3(t.ratings.logLoss)} (said ${pct(t.ratings.said)}, happened ${pct(t.ratings.happened)}) | bookmakers ${f3(t.market.logLoss)} (said ${pct(t.market.said)})`,
+    );
+    const tp = dc.totalsPredictions;
+    improve.totalsN += t.ratings.n;
+    improve.totalsSaid += t.ratings.said * t.ratings.n;
+    improve.totalsHappened += t.ratings.happened * t.ratings.n;
+    improve.totalsMarketSaid += t.market.said * t.market.n;
+    tp.ratings.forEach((x, i) => {
+      improve.totalsModel.push(binaryLoss(x.p, x.yes));
+      improve.totalsMarket.push(binaryLoss(tp.market[i].p, tp.market[i].yes));
+      const bin = improve.totalsBins[Math.min(9, Math.floor(x.p * 10))];
+      bin.sum += x.p;
+      bin.n++;
+      if (x.yes) bin.hits++;
+    });
+  }
+}
+
 // ---------- main ----------
 const GRID = {halfLifeDays: [60, 120, 180, 365, 730], ridge: [1, 2, 4, 8, 16]};
 
@@ -304,6 +425,55 @@ for (const league of leagues) {
   console.log(`bookmaker closing line available for ${withMarket} of them`);
   if (results.length < 500) {
     console.log('Not enough data; skipping.');
+    continue;
+  }
+
+  if (experiment === 'improve') {
+    runImprove(league, results);
+    continue;
+  }
+
+  // Goal-rate correction for totals: chosen on validation by Over 2.5 log loss, judged on the
+  // holdout for both totals and the 1X2 forecast (which it must not harm).
+  if (experiment === 'goals') {
+    const SCALES = [1, 1.02, 1.04, 1.06, 1.08, 1.1];
+    const tuning = SCALES.map((goalScale) => {
+      const r = backtest(results, {
+        testFrom: VALIDATION.from,
+        testTo: VALIDATION.to,
+        options: {goalScale},
+      });
+      return {goalScale, totals: r.totals.ratings.logLoss, result: r.models.ratings.logLoss};
+    });
+    const best = [...tuning].sort((a, b) => a.totals - b.totals)[0].goalScale;
+    console.log(
+      'validation Over 2.5 log loss by goal scale:',
+      tuning.map((v) => `${v.goalScale}=${f3(v.totals)}`).join('  '),
+      `-> ${best}`,
+    );
+    const plain = run(results, HOLDOUT, {goalScale: 1});
+    const scaled = run(results, HOLDOUT, {goalScale: best});
+    const n = plain.matches;
+    console.log(
+      `HOLDOUT (${n}): Over 2.5 log loss plain ${f3(plain.totals.ratings.logLoss)} (said ${pct(plain.totals.ratings.said)}) | scaled ${f3(scaled.totals.ratings.logLoss)} (said ${pct(scaled.totals.ratings.said)}) | happened ${pct(plain.totals.ratings.happened)} | bookmakers ${f3(plain.totals.market.logLoss)}`,
+    );
+    console.log(
+      `  1X2 log loss plain ${f3(plain.models.ratings.logLoss)} | scaled ${f3(scaled.models.ratings.logLoss)}`,
+    );
+    improve.n += n;
+    improve.rhoChoices.push(`${league}:${best}`);
+    const tp = plain.totalsPredictions.ratings;
+    const ts = scaled.totalsPredictions.ratings;
+    tp.forEach((x, i) => {
+      improve.totalsModel.push(binaryLoss(ts[i].p, ts[i].yes) - binaryLoss(x.p, x.yes));
+    });
+    improve.diffDcPlain.push(
+      ...diffsOf(
+        {predictions: {a: scaled.predictions.ratings, b: plain.predictions.ratings}},
+        'a',
+        'b',
+      ),
+    );
     continue;
   }
 
@@ -427,6 +597,70 @@ for (const league of leagues) {
           ? `       ${pct(mm.predicted).padStart(6)} / ${pct(mm.observed).padStart(6)} (${String(mm.n).padStart(4)})`
           : ''),
     );
+  }
+}
+
+if (experiment === 'goals' && improve.n) {
+  console.log('='.repeat(78));
+  console.log(
+    `ALL LEAGUES, holdout (${improve.n} matches). Scale chosen per league: ${improve.rhoChoices.join(' ')}`,
+  );
+  const show = (label, d) => {
+    const x = summarizeDiffs(d);
+    const verdict =
+      x.mean + 1.96 * x.se < 0
+        ? 'scaled is clearly better'
+        : x.mean - 1.96 * x.se > 0
+          ? 'scaled is clearly worse'
+          : 'no clear difference';
+    console.log(
+      `  ${label}: ${x.mean >= 0 ? '+' : ''}${f3(x.mean)} (±${f3(1.96 * x.se)}, 95%) -> ${verdict}`,
+    );
+  };
+  show('scaled minus plain, Over 2.5 log loss', improve.totalsModel);
+  show('scaled minus plain, 1X2 log loss     ', improve.diffDcPlain);
+}
+
+if (experiment === 'improve' && improve.n) {
+  console.log('='.repeat(78));
+  console.log(
+    `ALL LEAGUES, holdout (${improve.n} matches). Paired log loss per match, negative = first better:`,
+  );
+  const show = (label, d) => {
+    const x = summarizeDiffs(d);
+    const verdict =
+      x.mean + 1.96 * x.se < 0
+        ? 'first is clearly better'
+        : x.mean - 1.96 * x.se > 0
+          ? 'first is clearly worse'
+          : 'no clear difference';
+    console.log(
+      `  ${label}: ${x.mean >= 0 ? '+' : ''}${f3(x.mean)} (±${f3(1.96 * x.se)}, 95%) -> ${verdict}`,
+    );
+  };
+  console.log(`  rho chosen per league: ${improve.rhoChoices.join(' ')}`);
+  console.log(`  market weight chosen per league: ${improve.blendChoices.join(' ')}`);
+  show('Dixon-Coles minus plain ratings ', improve.diffDcPlain);
+  show('blend minus Dixon-Coles model   ', improve.diffBlendDc);
+  show('blend minus bookmaker closing   ', improve.diffBlendMarket);
+  if (improve.totalsN) {
+    const mean = (xs) => xs.reduce((s, v) => s + v, 0) / xs.length;
+    console.log(
+      `  Over 2.5 goals (${improve.totalsN} matches): model log loss ${f3(mean(improve.totalsModel))}, bookmakers ${f3(mean(improve.totalsMarket))}`,
+    );
+    console.log(
+      `    over 2.5 happened ${pct(improve.totalsHappened / improve.totalsN)}; model said ${pct(improve.totalsSaid / improve.totalsN)}; bookmakers said ${pct(improve.totalsMarketSaid / improve.totalsN)}`,
+    );
+    show(
+      'model minus bookmakers (over 2.5)',
+      improve.totalsModel.map((v, i) => v - improve.totalsMarket[i]),
+    );
+    console.log('    model calibration for over 2.5 (said / happened, n):');
+    for (const [i, b] of improve.totalsBins.entries())
+      if (b.n)
+        console.log(
+          `      ${`${i * 10}-${i * 10 + 10}%`.padEnd(8)} ${pct(b.sum / b.n).padStart(6)} / ${pct(b.hits / b.n).padStart(6)} (${b.n})`,
+        );
   }
 }
 

@@ -27,7 +27,45 @@ export function wilson(successes, n) {
 const rate = (correct, settled) => (settled ? correct / settled : null);
 const favourite = (p) => p.indexOf(Math.max(...p));
 const kickoff = (pick) => Date.parse(pick.forecast?.kickoff) || pick.createdAt || 0;
-const probabilityOnPick = (pick) => Number(pick.forecast?.p?.[pick.outcome]);
+
+/** The market a pick is in: 'result' (home/draw/away) or 'totals' (over/under a goal line). */
+export const pickMarket = (pick) => (pick?.market === 'totals' ? 'totals' : 'result');
+
+/** What was picked, in words: "Arsenal win", "Draw", "Over 2.5 goals". */
+export function pickLabel(pick) {
+  const f = pick?.forecast ?? {};
+  if (pickMarket(pick) === 'totals')
+    return `${pick.outcome === 0 ? 'Over' : 'Under'} ${pick.line} goals`;
+  return [`${f.home} win`, 'Draw', `${f.away} win`][pick?.outcome] ?? 'Pick';
+}
+
+/** The forecast's chance (percent) for what was picked, or NaN when the forecast has none. */
+export function pickProbability(pick) {
+  const f = pick?.forecast;
+  if (pickMarket(pick) === 'totals') {
+    const line = f?.goals?.lines?.find((l) => Number(l.line) === Number(pick.line));
+    return line ? Number(pick.outcome === 0 ? line.over : line.under) : NaN;
+  }
+  return Number(f?.p?.[pick?.outcome]);
+}
+
+/** Whether the pick sided with the forecast (for totals: the side it put above 50%); null if unknown. */
+export function pickFollowsForecast(pick) {
+  if (pickMarket(pick) === 'totals') {
+    const p = pickProbability(pick);
+    return Number.isFinite(p) ? p >= 50 : null;
+  }
+  const p = pick?.forecast?.p;
+  return Array.isArray(p) ? pick.outcome === favourite(p) : null;
+}
+
+/** Short name of the kind of pick, for grouping: "Home win", "Draw", "Away win", "Over 2.5". */
+export function pickKind(pick) {
+  if (pickMarket(pick) === 'totals') return `${pick.outcome === 0 ? 'Over' : 'Under'} ${pick.line}`;
+  return OUTCOME_LABELS[pick?.outcome] ?? 'Other';
+}
+
+const probabilityOnPick = pickProbability;
 
 /** Groups settled picks and reports count, correct picks and accuracy for each group. */
 function groupBy(settled, keyOf) {
@@ -87,11 +125,20 @@ export function summarizePicks(picks) {
     currentStreak = {type: lastResult, length};
   }
 
-  const byOutcome = OUTCOME_LABELS.map((label, outcome) => {
-    const mine = all.filter((p) => p.outcome === outcome);
+  // Home win / Draw / Away win always, then any Over/Under kinds that were actually picked.
+  const kinds = [...OUTCOME_LABELS];
+  for (const p of all) if (!kinds.includes(pickKind(p))) kinds.push(pickKind(p));
+  const byOutcome = kinds.map((label) => {
+    const mine = all.filter((p) => pickKind(p) === label);
     const done = mine.filter((p) => p.result === 'correct' || p.result === 'incorrect');
     const hits = done.filter((p) => p.result === 'correct').length;
-    return {label, picks: mine.length, settled: done.length, accuracy: rate(hits, done.length)};
+    return {
+      label,
+      picks: mine.length,
+      settled: done.length,
+      correct: hits,
+      accuracy: rate(hits, done.length),
+    };
   });
 
   const byCompetition = groupBy(settled, (p) => p.forecast?.competition ?? null)
@@ -122,9 +169,9 @@ export function summarizePicks(picks) {
     };
   }).filter((b) => b.settled > 0);
 
-  const withModel = settled.filter((p) => Array.isArray(p.forecast?.p));
-  const following = withModel.filter((p) => p.outcome === favourite(p.forecast.p));
-  const against = withModel.filter((p) => p.outcome !== favourite(p.forecast.p));
+  const withModel = settled.filter((p) => pickFollowsForecast(p) !== null);
+  const following = withModel.filter((p) => pickFollowsForecast(p));
+  const against = withModel.filter((p) => !pickFollowsForecast(p));
   const hitRate = (list) => rate(list.filter((p) => p.result === 'correct').length, list.length);
 
   const expected = settled.reduce((s, p) => s + (probabilityOnPick(p) || 0) / 100, 0);

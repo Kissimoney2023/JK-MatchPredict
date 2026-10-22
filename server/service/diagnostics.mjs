@@ -161,12 +161,32 @@ export function createDiagnostics({env, now, storage, store, supabase, accountPr
 
     // The tables the app needs (supabase/schema.sql). The secret key can read each one.
     const missing = [];
+    let outdated = false;
     for (const table of TABLES) {
       try {
         await supabase.select(table, {select: '*', limit: '1'});
       } catch {
         missing.push(table);
       }
+    }
+    // Columns added after the first version of the schema (Over/Under picks).
+    if (!missing.includes('picks')) {
+      try {
+        await supabase.select('picks', {select: 'market,line', limit: '1'});
+      } catch {
+        outdated = true;
+      }
+    }
+    if (outdated) {
+      out.push(
+        item(
+          'supabase-schema',
+          'Supabase schema',
+          'error',
+          'The picks table predates Over/Under picks (no market/line columns), so those picks cannot be saved for signed-in people.',
+          'Run supabase/schema.sql again in Supabase → SQL Editor; it only adds what is missing.',
+        ),
+      );
     }
     out.push(
       missing.length

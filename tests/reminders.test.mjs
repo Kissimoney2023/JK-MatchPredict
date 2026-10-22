@@ -109,7 +109,7 @@ test('a pick starting within 45 minutes triggers one reminder, only once', async
   assert.equal(first.sent, 1);
   assert.equal(x.sent[0].payload.title, 'Kickoff soon');
   assert.match(x.sent[0].payload.body, /Arsenal vs Chelsea starts in about 30 minutes/);
-  assert.match(x.sent[0].payload.body, /home win/);
+  assert.match(x.sent[0].payload.body, /Your pick: Arsenal win./);
   assert.equal(x.sent[0].sub.endpoint.startsWith('https://fcm.googleapis.com/'), true);
 
   x.advance(10 * MIN);

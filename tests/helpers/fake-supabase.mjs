@@ -40,6 +40,7 @@ export function createFakeSupabase() {
   let failing = false;
   const providers = {github: true, google: false};
   const missing = new Set(); // tables that do not exist yet
+  const missingColumns = new Set(); // "table.column" pairs that do not exist yet
 
   /** Simulates the redirect back from GitHub: returns the `code` the browser would receive. */
   function issueCode(user, authorizeUrl) {
@@ -93,8 +94,16 @@ export function createFakeSupabase() {
       }
       if (params.get('limit')) rows = rows.slice(0, Number(params.get('limit')));
       const select = params.get('select');
-      if (select && select !== '*')
-        rows = rows.map((r) => Object.fromEntries(select.split(',').map((c) => [c, r[c]])));
+      if (select && select !== '*') {
+        const wanted = select.split(',');
+        const gone = wanted.find((c) => missingColumns.has(`${match[1]}.${c}`));
+        if (gone)
+          return Response.json(
+            {code: '42703', message: `column ${match[1]}.${gone} does not exist`},
+            {status: 400},
+          );
+        rows = rows.map((r) => Object.fromEntries(wanted.map((c) => [c, r[c]])));
+      }
       return Response.json(rows);
     }
 
@@ -102,6 +111,12 @@ export function createFakeSupabase() {
       const conflictKeys = params.get('on_conflict')?.split(',') ?? keys;
       const written = [];
       for (const row of body) {
+        const gone = Object.keys(row).find((c) => missingColumns.has(`${match[1]}.${c}`));
+        if (gone)
+          return Response.json(
+            {code: 'PGRST204', message: `Could not find the '${gone}' column of '${match[1]}'`},
+            {status: 400},
+          );
         const existing = table.find((r) => conflictKeys.every((k) => r[k] === row[k]));
         if (existing) {
           if (prefer.includes('ignore-duplicates')) continue;
@@ -142,5 +157,6 @@ export function createFakeSupabase() {
     setFailing: (value) => (failing = value),
     providers,
     dropTable: (name) => missing.add(name),
+    dropColumn: (table, column) => missingColumns.add(`${table}.${column}`),
   };
 }

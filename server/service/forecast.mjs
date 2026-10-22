@@ -1,8 +1,16 @@
 import {AppError} from '../errors.mjs';
 import {hash, HOUR} from '../util.mjs';
-import {probabilities, isOpen, sameMatch, goalModel} from '../model.mjs';
+import {probabilities, isOpen, sameMatch, goalModel, goalsFromTotalLine} from '../model.mjs';
 import {ratingsForecast} from '../ratings.mjs';
-import {analyze} from '../analysis.mjs';
+import {analyze, goalMarkets} from '../analysis.mjs';
+
+// Which source leads when both are available. The bookmakers' consensus beat the app's own
+// model on 1,835 holdout matches and blending with it never beat it, so it leads by default;
+// FORECAST_PRIMARY=api-football restores API-Football's prediction as the first choice.
+const marketLeads = (env) =>
+  String(env.FORECAST_PRIMARY || 'market')
+    .trim()
+    .toLowerCase() !== 'api-football';
 
 export function createForecast({env, store, now, storage, provider, lookup, history, strikerApi}) {
   const {read} = storage;
@@ -70,10 +78,45 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
     };
   }
 
-  /** Forecast when the primary API has none: market consensus first, then the history models. */
-  async function fallbackForecast(f, teamIds) {
-    const market = await strikerApi.marketFor(f);
-    return market ? marketRecord(f, market) : model(f, teamIds);
+  /**
+   * Goal estimates (ratings model) from histories that are already cached, for a fixture whose
+   * win/draw/loss forecast came from elsewhere. Reads the cache only, so it costs nothing and
+   * may simply find nothing.
+   */
+  async function cachedModelGoals(f, teamIds) {
+    try {
+      const target = f.provider === 'fd' ? f : (await mappedFD(f)).f;
+      const rows = [];
+      for (const id of new Set([target.homeTeamId, target.awayTeamId, ...teamIds]))
+        rows.push(...((await history.peek(id))?.body.matches ?? []));
+      const m = ratingsForecast({
+        rows,
+        homeId: target.homeTeamId,
+        awayId: target.awayTeamId,
+        kickoff: f.kickoff,
+        now: now(),
+      });
+      return m?.goals ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Adds Over/Under estimates to a forecast. The bookmakers' total line comes first (it beat
+   * the model on totals too), then the goal model's own matrix, then the older model's
+   * expected goals, else none.
+   */
+  async function withGoals(record, f, teamIds, market) {
+    const fromLine = goalsFromTotalLine(market?.total);
+    if (fromLine)
+      return {...record, goals: fromLine, goalsSource: 'market-total', marketTotal: market.total};
+    if (record.goals) return {...record, goalsSource: 'model'};
+    const cached = await cachedModelGoals(f, teamIds);
+    if (cached) return {...record, goals: cached, goalsSource: 'model'};
+    if (record.expectedGoals)
+      return {...record, goals: goalMarkets(record.expectedGoals), goalsSource: 'model-legacy'};
+    return {...record, goals: null, goalsSource: null};
   }
 
   async function forecast(key, listingId) {
@@ -106,8 +149,10 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
         'Pre-match predictions are closed or kickoff is unconfirmed.',
       );
 
+    const market = await strikerApi.marketFor(f);
     let record;
-    if (f.provider === 'ap') {
+    if (market && marketLeads(env)) record = marketRecord(f, market);
+    else if (f.provider === 'ap') {
       try {
         const d = await provider('ap', `predictions?fixture=${f.externalId}`, HOUR);
         const p = probabilities(d.body.response?.[0]?.predictions?.percent);
@@ -119,10 +164,11 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
           );
         record = {...f, p, source: 'API-Football', fallback: false, providerFetchedAt: d.at};
       } catch (e) {
-        if (!env.FOOTBALL_DATA_ORG_KEY && !strikerApi.marketEnabled()) throw e;
-        record = await fallbackForecast(f, teamIds);
+        if (!env.FOOTBALL_DATA_ORG_KEY && !market) throw e;
+        record = market ? marketRecord(f, market) : await model(f, teamIds);
       }
-    } else record = await fallbackForecast(f, teamIds);
+    } else record = market ? marketRecord(f, market) : await model(f, teamIds);
+    record = await withGoals(record, f, teamIds, market);
 
     const forecastAt = now();
     const forecastId = hash(

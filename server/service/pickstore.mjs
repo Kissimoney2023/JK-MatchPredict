@@ -9,6 +9,7 @@ const userIdOf = (sid) => String(sid).slice(ACCOUNT_PREFIX.length);
 const fromRow = (r) => ({
   id: r.pick_id,
   canonical: r.canonical,
+  ...(r.market === 'totals' ? {market: 'totals', line: Number(r.line)} : {}),
   outcome: r.outcome,
   createdAt: Date.parse(r.created_at),
   forecast: r.forecast,
@@ -17,10 +18,13 @@ const fromRow = (r) => ({
   ...(r.settled_at ? {settledAt: Date.parse(r.settled_at)} : {}),
 });
 
+// The market columns are only sent for Over/Under picks, so a database created before they
+// existed keeps accepting home/draw/away picks.
 const toRow = (userId, p) => ({
   user_id: userId,
   pick_id: p.id,
   canonical: p.canonical,
+  ...(p.market === 'totals' ? {market: 'totals', line: p.line} : {}),
   outcome: p.outcome,
   created_at: new Date(p.createdAt).toISOString(),
   forecast: p.forecast,
@@ -68,10 +72,22 @@ export function createPickStore({storage, supabase}) {
           'limit',
           'Your account has reached its 500-pick limit. Export your history.',
         );
-      const inserted = await db.insert('picks', [toRow(userId, pick)], {
-        onConflict: 'user_id,canonical',
-        ignoreDuplicates: true,
-      });
+      let inserted;
+      try {
+        inserted = await db.insert('picks', [toRow(userId, pick)], {
+          onConflict: 'user_id,canonical',
+          ignoreDuplicates: true,
+        });
+      } catch (e) {
+        // An Over/Under pick on a database that predates its columns: say what to run.
+        if (pick.market === 'totals' && /column|PGRST204/i.test(String(e?.detail ?? '')))
+          throw new AppError(
+            503,
+            'schema',
+            'Over/Under picks need a small database update: run supabase/schema.sql again in Supabase (it is safe to re-run).',
+          );
+        throw e;
+      }
       return inserted.length > 0;
     }
 

@@ -1721,3 +1721,31 @@ progress::-moz-progress-bar {
 .notice p {
   margin: var(--space-2) 0 0;
 }
+
+/* ---------- Betting view ---------- */
+.fair-odds {
+  display: block;
+  color: var(--muted);
+  font: 500 12px var(--font-mono);
+}
+.probability .fair-odds {
+  margin: -4px 0 var(--space-2);
+}
+.ou-side {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.ou-side > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ou-side strong {
+  font-family: var(--font-mono);
+}
+.goal-line .ou-side:last-child {
+  align-items: flex-end;
+}
+.ou-picks {
+  grid-template-columns: 1fr 1fr;
+}

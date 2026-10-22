@@ -1,6 +1,6 @@
 import {AppError} from '../errors.mjs';
 import {hash, HOUR} from '../util.mjs';
-import {isOpen, settle, sameMatch, matchKey} from '../model.mjs';
+import {isOpen, settleSelection, sameMatch, matchKey, GOAL_LINES} from '../model.mjs';
 
 const FORECAST_MAX_AGE = 2 * HOUR;
 const SETTLE_DELAY = 105 * 60_000;
@@ -13,10 +13,27 @@ export function createPicks({now, storage, lookup, pickStore}) {
 
   const picks = (sid) => pickStore.list(sid);
 
-  async function save(sid, id, outcome) {
-    if (!/^[a-f0-9]{64}$/.test(id) || ![0, 1, 2].includes(outcome))
+  /**
+   * Saves a virtual pick on a forecast. `market` 'result' (outcome 0/1/2 = home, draw, away)
+   * or 'totals' (outcome 0 = over `line` goals, 1 = under). One pick per match per market.
+   */
+  async function save(sid, id, outcome, market = 'result', line) {
+    const totals = market === 'totals';
+    if (!totals && market !== 'result') throw new AppError(400, 'pick', 'Unknown market.');
+    const lineValue = totals ? Number(line) : undefined;
+    if (
+      !/^[a-f0-9]{64}$/.test(id) ||
+      ![0, 1, 2].includes(outcome) ||
+      (totals && (outcome > 1 || !GOAL_LINES.includes(lineValue)))
+    )
       throw new AppError(400, 'pick', 'Invalid pick.');
     const f = await read('forecast/' + id);
+    if (totals && !f?.goals?.lines?.some((l) => Number(l.line) === lineValue))
+      throw new AppError(
+        409,
+        'no_goals',
+        'This forecast has no Over/Under estimate for that line.',
+      );
     if (!f || !isOpen(f, now()) || now() - f.forecastAt > FORECAST_MAX_AGE)
       throw new AppError(
         409,
@@ -28,10 +45,11 @@ export function createPicks({now, storage, lookup, pickStore}) {
       throw new AppError(409, 'closed', 'This match changed or is no longer open.');
     if (!isOpen(f, now())) throw new AppError(409, 'closed', 'Kickoff has passed.');
 
-    const canonical = matchKey(f);
+    const canonical = matchKey(f) + (totals ? `|totals:${lineValue}` : '');
     const pick = {
       id: hash(canonical),
       canonical,
+      ...(totals ? {market: 'totals', line: lineValue} : {}),
       outcome,
       createdAt: now(),
       forecast: f,
@@ -55,7 +73,7 @@ export function createPicks({now, storage, lookup, pickStore}) {
     for (const p of eligible) {
       try {
         const current = await fresh(p.forecast);
-        const result = settle(current.raw, p.outcome);
+        const result = settleSelection(current.raw, p);
         if (result) changes.set(p.id, {...result, settledAt: now()});
       } catch {
         unavailable++;

@@ -8,7 +8,9 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - All-league fixtures for a selected UTC day, or a selected league over up to 31 days.
 - Every match returned in that range, with team search, match-status filters and 20-card client-side pagination. There is no fixed 12-match cap.
 - Pre-match home/draw/away probabilities, favored outcome (including draws), and a clear recommendation to skip closely matched games.
-- Double-chance tips derived from outcome probabilities. Goals and both-teams-to-score estimates appear only with the fallback goal model.
+- Double-chance tips derived from outcome probabilities.
+- **Betting view**: every probability also shown as fair decimal odds (1 ÷ chance, no margin), and an Over/Under ladder (0.5 to 3.5 goals, both teams to score) with fair odds for each side; see Over/Under.
+- **Over/Under 2.5 virtual picks** next to the home/draw/away ones, settled from the regulation-time total; see Over/Under.
 - API-Football primary; football-data.org fallback where the competition and match can be verified.
 - Forecast source, timestamps, model limitations and missing-data states.
 - Accuracy over time: a chart on My picks of your running accuracy after each settled pick (by match date) against what the forecasts expected for the same picks, starting at the third settled pick and shown from five. Void and pending picks are left out. On My picks it is computed in the browser from your picks; the public share page shows the same chart from the stored snapshot.
@@ -46,6 +48,7 @@ API_FOOTBALL_DAILY_LIMIT=100
 - `FOOTBALL_DATA_ORG_KEY`: football-data.org API token.
 - `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_PUBLISHABLE_KEY`, optional `SITE_URL`: accounts (see Accounts).
 - `POTD_COMPETITIONS`: competitions considered for the pick of the day (see Picks of the day).
+- `FORECAST_PRIMARY`: `market` (default) or `api-football`, which source leads when both are available (see Predictions and tips).
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, optional `VAPID_SUBJECT`: kickoff reminders (see Kickoff reminders).
 - `STRIKERAPI_API_KEY`: optional StrikerAPI key (see StrikerAPI above). `STRIKERAPI_MONTHLY_CREDITS`: credit cap, default 450. `STRIKERAPI_MARKET_FORECASTS`: `off` disables market-based forecasts.
 - `CRON_SECRET`: secret for `/api/prefetch` (see Scheduled prefetch). `PREFETCH_COMPETITIONS`: optional competition codes to warm, default `CL`.
@@ -186,13 +189,13 @@ Needs the `shares` table: re-run [`supabase/schema.sql`](supabase/schema.sql) on
 
 Set `STRIKERAPI_API_KEY` (free key: 500 credits a month at https://strikerapi.com/signup) to add:
 
-- **Market consensus forecasts.** The Champions League (and other covered leagues) schedule carries the median three-way line across sportsbooks. The app removes the bookmaker margin (Shin's method) and uses the result as the forecast when API-Football has none. It needs no team histories, so it also avoids football-data.org rate limits. These are bookmaker prices, not an independent model, and the app labels them that way (source "StrikerAPI · market consensus"); they carry no edge. Set `STRIKERAPI_MARKET_FORECASTS=off` to disable this and keep the history-based models.
+- **Market consensus forecasts.** The Champions League (and other covered leagues) schedule carries the median three-way line across sportsbooks. The app removes the bookmaker margin (Shin's method) and uses the result as the forecast ahead of API-Football's prediction (it beat the app's model in the backtest). It needs no team histories, so it also avoids football-data.org rate limits. These are bookmaker prices, not an independent model, and the app labels them that way (source "StrikerAPI · market consensus"); they carry no edge. Set `STRIKERAPI_MARKET_FORECASTS=off` to disable this and keep the history-based models.
 - **All-time head-to-head** in the competition, **competition Elo ratings** and a **market view** for comparison in the forecast dialog. Elo ratings only move on that competition's matches, so Champions League ratings are thin and not comparable across leagues; the dialog says so.
 - **Standings fallback** when football-data.org cannot provide them.
 
 **Matching fixtures to StrikerAPI games.** The two providers spell clubs differently ("SK Slavia Praha" / "Slavia Prague", "FC København" / "Copenhagen"). Names are compared word by word after removing accents and generic club words (SK, FK, SL, Club...), with a table of local-to-English spellings (`server/strikerapi.mjs`). If both clubs match and the kickoff is within three hours, that is the game. If only one side matches (home with home, away with away) at the same kickoff (within 30 minutes) and exactly one such game exists, it is accepted too, since a club cannot play two matches at once; with two candidates the app refuses rather than guess. When nothing matches, the function log gets a line "[strikerapi] no schedule game matched ..." listing what the schedule offered near that kickoff: use it to add a missing spelling. A fixture with no bookmaker line and too little history (football-data.org's free plan lacks many domestic leagues, so clubs from Turkey, Czechia and similar may have only a couple of results) gets a plain "no forecast available" message.
 
-Fixtures still come from API-Football and football-data.org; StrikerAPI is used as an enrichment layer. Forecast order: API-Football prediction → StrikerAPI market consensus → `jk-ratings-v2` → `jk-poisson-v1`. Every StrikerAPI feature is optional and failures fall back silently.
+Fixtures still come from API-Football and football-data.org; StrikerAPI is used as an enrichment layer. Forecast order: StrikerAPI market consensus (when it has a line) → API-Football prediction → `jk-ratings-v2` → `jk-poisson-v1` (see Predictions and tips; `FORECAST_PRIMARY=api-football` swaps the first two). The schedule's total line also drives the Over/Under estimates. Every StrikerAPI feature is optional and failures fall back silently.
 
 **Credits.** Calls are cached (schedule 12 h, ratings 24 h, standings 12 h, head-to-head 7 days) and counted against `STRIKERAPI_MONTHLY_CREDITS` (default 450 of the 500 free credits; the window is a rolling 30 days from the first call, not your account's calendar month). A schedule or ratings call costs 2 credits, so one competition warmed once a day uses roughly 130 credits a month plus 2 per opened head-to-head. Out-of-credit or invalid-key replies pause StrikerAPI for an hour.
 
@@ -215,9 +218,23 @@ Free provider plans allow only a handful of requests per minute, and one forecas
 
 ## Predictions and tips
 
-API-Football provides primary three-way probabilities. It is credited as the forecast source. The highest probability is labeled the predicted outcome, not a guaranteed result; a draw can be the favorite.
+**Order of sources.** When StrikerAPI is configured and has a line for the match, the bookmakers' consensus (median three-way line across sportsbooks, margin removed with Shin's method) is the forecast: in the backtest below it beat the app's own model on 1,835 holdout matches and no blend of the two beat it. Otherwise API-Football's prediction is used, then the `jk-ratings-v2` model, then `jk-poisson-v1`. `FORECAST_PRIMARY=api-football` puts API-Football's prediction ahead of the market again. The source is always credited on the forecast.
+
+API-Football provides three-way probabilities. It is credited as the forecast source. The highest probability is labeled the predicted outcome, not a guaranteed result; a draw can be the favorite.
 
 The experimental `jk-ratings-v2` fallback (used when API-Football has no forecast) fits a regularised Poisson attack/defence model with home advantage to completed regulation-time results from football-data.org: the two teams' histories plus every other team history already cached for the same fixture list (cache reads only, so no extra provider requests). Matches are weighted by recency (half-life 180 days) and ratings are shrunk toward the average team (ridge 4). Each team needs at least 8 results; otherwise the simpler `jk-poisson-v1` goal-average model is used (five home/away matches per side), and if that also lacks data no forecast is shown. Double chance follows from summed match probabilities; total goals and both-teams-to-score follow from the expected goals.
+
+### Over/Under (totals)
+
+The analysis shows an Over/Under ladder (0.5, 1.5, 2.5, 3.5 goals) and both teams to score, each side with its chance and fair decimal odds, plus Over/Under 2.5 pick buttons. Where the estimate comes from, in order:
+
+1. **The bookmakers' total line** (StrikerAPI schedule, the goal total priced at even money): the app solves for the Poisson goal rate at which over and under are equally likely at that line (quarter lines such as 2.75 are treated as half a bet on each neighbour) and reads the other lines off that distribution. Labelled "market-total"; no both-teams-to-score, because a total says nothing about how goals split.
+2. **The ratings model's scoreline matrix**, when the model produced the forecast or the two teams' histories are already cached (no extra requests).
+3. The older goal-average model's expected goals.
+
+Otherwise the ladder says no estimate is available and Over/Under picks are refused for that match. Fair odds are 1 ÷ probability with no margin: a bookmaker price below them offers no value by that forecast; they are not a recommendation to bet.
+
+**Over/Under picks** live beside home/draw/away picks: one pick per match per market (the canonical key carries the market), removable until kickoff, settled from the regulation-time total (over wins when goals exceed the line; cancelled matches are void), and counted in the statistics on their own rows ("Over 2.5", "Under 2.5"). Signed-in accounts need the two columns added at the end of the `picks` table in `supabase/schema.sql`; re-run the file (it only adds what is missing). The site setup check reports a database that predates them, and the save itself says what to run.
 
 ### Backtesting
 
@@ -240,6 +257,10 @@ The experimental `jk-ratings-v2` fallback (used when API-Football has no forecas
 - It is about 0.03 log loss per match **worse than the closing line** (clearly worse in four of five leagues, not clearly different in the Premier League). That is the normal state of affairs: bookmaker prices also reflect injuries, line-ups and money flow, which this model ignores. This is why the StrikerAPI market consensus, when configured, is ranked above the ratings model.
 - No consistent draw or home/away bias was found, and re-tuning half-life and shrinkage on 2024/25 did not improve the holdout (settings differ by league but the holdout scores are equal), so the defaults stay.
 - **Experiment, no gain: shots as an extra input.** The ratings can optionally be fitted to a blend of real goals and a shots-based expected-goals estimate (`xgWeight` in `server/ratings.mjs`, off by default; `node scripts/backtest-csv.mjs --league E0,SP1,D1,I1,F1 --experiment shots`, or `shots-sot` for shots on target only). Conversion rates were estimated before 2024/25, the blend weight chosen on 2024/25 and judged on the 2025/26 holdout (1,835 matches). Result: log loss 0.999 against 1.003 for goals only, a difference of -0.003 per match (±0.005), i.e. **no clear improvement**; the gap to the bookmaker line stays about 0.026. So production is unchanged (and the football-data.org histories used in production carry no shot data anyway).
+- **Measured, October 2026 (`--experiment improve`, same holdout of 1,835 matches):**
+  - _Dixon-Coles low-score correction_ (`rho` in `server/ratings.mjs`, tuned per league on 2024/25): -0.000 log loss per match (±0.003), **no gain**; it stays off.
+  - _Blending the model with the bookmakers' line_ (weight tuned on 2024/25, 0.75 to 0.9): clearly better than the model alone (-0.027 ±0.008) but still worse than the line alone (+0.002 ±0.002). So the line is used on its own whenever it exists, and no blend is shipped.
+  - _Over 2.5 goals from the model's scoreline matrix_: log loss 0.692 against 0.673 for the bookmakers' Over/Under prices (+0.019 ±0.007, clearly worse). The model said "over" 51.3% of the time; it happened 54.3% (bookmakers said 53.0%). A goal-rate correction (`goalScale`) tuned on 2024/25 came out at 1.0, so none is applied; the bookmakers' total line is preferred for totals when available and the model's figures are labelled as the model's.
 - **Not measured:** Champions League and other cross-league fixtures (the ratings there rest on weaker cross-league links), and the API-Football forecast (not available on the free plan). Treat percentages as estimates, never as certainties.
 
 ## Provider fallback
@@ -255,7 +276,7 @@ All-league browsing uses one UTC day. Single-league queries support up to 31 day
 - Upstash Redis (via Vercel Storage) stores cache, forecast and pick records server-side.
 - A 256-bit random HttpOnly, SameSite=Lax, Secure-on-HTTPS cookie identifies a private browser profile. No extra auth API key is needed.
 - This is not an account/login system: picks do not follow you across devices. Clearing cookies or switching domains loses access to the old profile. Export your picks before doing so. JSON export is for your records; it is not an import or authentication token.
-- Picks are limited to 500 per profile. A pick can be removed only before kickoff and only while it has no result (the server enforces both, and the database delete itself only matches unsettled rows); after kickoff or once settled it is immutable, so results cannot be erased from statistics or share links. Removing a pick frees the match for a new pick. Atomic conditional writes prevent concurrent updates from overwriting each other. Duplicate canonical match picks are blocked.
+- Picks are limited to 500 per profile. A pick can be removed only before kickoff and only while it has no result (the server enforces both, and the database delete itself only matches unsettled rows); after kickoff or once settled it is immutable, so results cannot be erased from statistics or share links. Removing a pick frees the match for a new pick. Atomic conditional writes prevent concurrent updates from overwriting each other. Duplicate canonical match picks are blocked (one home/draw/away pick and one Over/Under pick per match).
 - Profiles/data from the earlier ChatGPT Sites deployment are not migrated.
 - Results are checked on demand, three eligible pending matches per click. Cancelled/abandoned/awarded games are void; postponed and incomplete games remain pending. Fallback extra-time/penalty games remain pending when verified 90-minute scores are unavailable.
 

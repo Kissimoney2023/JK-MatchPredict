@@ -1,5 +1,6 @@
 import {AppError} from '../errors.mjs';
 import {hash} from '../util.mjs';
+import {pickLabel} from '../pickstats.mjs';
 
 const LEAD_MS = 45 * 60_000; // remind when a picked match starts within this long
 const MAX_SUBSCRIPTIONS = 2000;
@@ -11,7 +12,6 @@ const SETTLE_WINDOW_MS = 8 * 3_600_000; // after that, people can use "Check res
 const RECHECK_MS = 30 * 60_000;
 const MAX_SETTLE_LOOKUPS_PER_RUN = 6; // protects the football data quotas
 const CHECKED_KEPT = 50;
-const OUTCOMES = ['home win', 'draw', 'away win'];
 
 // The browser vendors' push services. The server posts to whatever address a subscription
 // names, so only these hosts are accepted: nobody can point it at an internal address.
@@ -66,7 +66,7 @@ export function buildPayload(due, now) {
     const f = pick.forecast;
     return {
       title: 'Kickoff soon',
-      body: `${f.home} vs ${f.away} starts in about ${minutes(kickoff - now)} minutes. Your pick: ${OUTCOMES[pick.outcome] ?? 'saved'}.`,
+      body: `${f.home} vs ${f.away} starts in about ${minutes(kickoff - now)} minutes. Your pick: ${pickLabel(pick)}.`,
       tag: 'kickoff-' + pick.id,
       url: '/',
     };

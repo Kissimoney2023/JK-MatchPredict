@@ -43,6 +43,12 @@ create table if not exists public.picks (
 );
 create index if not exists picks_user_created_idx on public.picks (user_id, created_at desc);
 
+-- Over/Under picks (added later). market 'result' keeps outcome = 0 home / 1 draw / 2 away;
+-- market 'totals' uses outcome 0 = over `line` goals, 1 = under. One pick per match per market
+-- (the canonical key includes the market), so the primary key stays as it is.
+alter table public.picks add column if not exists market text not null default 'result';
+alter table public.picks add column if not exists line   numeric;
+
 alter table public.profiles enable row level security;
 alter table public.sessions enable row level security;
 alter table public.picks    enable row level security;

@@ -5,14 +5,19 @@ import {run} from '../busy.js';
 import {message} from '../dom.js';
 import {renderPickStats} from './pickstats.js';
 import {renderReminders} from './reminders.js';
+import {pickLabel, pickProbability} from '/pickstats.js';
+import {fairOdds} from '/analysis.js';
 
 /** A pick can be taken back until kickoff, and only while it has no result. */
 const canRemove = (p) => !p.result && Date.parse(p.forecast.kickoff) > Date.now();
 
 function pickCard(p) {
   const f = p.forecast;
-  const label = [f.home + ' win', 'Draw', f.away + ' win'][p.outcome];
-  return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${esc(p.result || 'Pending')}</span></div><h3>${esc(f.home)} vs ${esc(f.away)}</h3><p><strong>${esc(label)} · ${f.p[p.outcome]}%</strong></p><p class="muted">Kickoff ${esc(formatDate(f.kickoff))}<br>Saved ${esc(formatDate(p.createdAt))}${p.score ? '<br>Regulation score ' + esc(p.score) : ''}<br>${esc(f.source)}</p>${canRemove(p) ? `<div class="pick-actions"><button class="text-button danger" data-remove-pick="${esc(p.id)}">Remove pick</button><small class="muted">Until kickoff</small></div>` : ''}</article>`;
+  const chance = pickProbability(p);
+  const chanceText = Number.isFinite(chance)
+    ? ` · ${chance}% · fair ${fairOdds(chance)?.toFixed(2) ?? '—'}`
+    : '';
+  return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${esc(p.result || 'Pending')}</span></div><h3>${esc(f.home)} vs ${esc(f.away)}</h3><p><strong>${esc(pickLabel(p) + chanceText)}</strong></p><p class="muted">Kickoff ${esc(formatDate(f.kickoff))}<br>Saved ${esc(formatDate(p.createdAt))}${p.score ? '<br>Regulation score ' + esc(p.score) : ''}<br>${esc(f.source)}</p>${canRemove(p) ? `<div class="pick-actions"><button class="text-button danger" data-remove-pick="${esc(p.id)}">Remove pick</button><small class="muted">Until kickoff</small></div>` : ''}</article>`;
 }
 
 const EMPTY_PICKS =

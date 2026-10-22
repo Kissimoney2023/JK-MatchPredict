@@ -6,8 +6,11 @@ function setBusy(on) {
   $('#refresh').disabled = on;
   $('#filters button').disabled = on;
   $('#settle').disabled = on;
-  $$('[data-analyze],[data-save]').forEach((b) => {
-    b.disabled = on || (b.hasAttribute('data-save') && !!state.analysis?.demo);
+  $$('[data-analyze],[data-save],[data-save-totals]').forEach((b) => {
+    b.disabled =
+      on ||
+      ((b.hasAttribute('data-save') || b.hasAttribute('data-save-totals')) &&
+        !!state.analysis?.demo);
   });
   $('#refresh').textContent = on ? 'Loading…' : 'Refresh';
 }
