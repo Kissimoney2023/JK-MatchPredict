@@ -11,6 +11,8 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - Double-chance tips derived from outcome probabilities.
 - **Betting view**: every probability also shown as fair decimal odds (1 ÷ chance, no margin), and an Over/Under ladder (0.5 to 3.5 goals, both teams to score) with fair odds for each side; see Over/Under.
 - **Over/Under 2.5 virtual picks** next to the home/draw/away ones, settled from the regulation-time total; see Over/Under.
+- **Value check**: type a bookmaker’s price next to any selection to see its implied chance, the expected value against the forecast and a quarter-Kelly stake; see Value check and slip calculator.
+- **Slip calculator**: tick pending picks to see the chance the whole accumulator wins, its fair combined odds and the expected value of a bookmaker’s combined price.
 - API-Football primary; football-data.org fallback where the competition and match can be verified.
 - Forecast source, timestamps, model limitations and missing-data states.
 - Accuracy over time: a chart on My picks of your running accuracy after each settled pick (by match date) against what the forecasts expected for the same picks, starting at the third settled pick and shown from five. Void and pending picks are left out. On My picks it is computed in the browser from your picks; the public share page shows the same chart from the stored snapshot.
@@ -160,6 +162,14 @@ The "How it works" page ends with a setup check for whoever runs the site. Enter
 - reminder keys, the picks of the day, and `SITE_URL`.
 
 It reports only whether things are set and accepted, never a key or any value, and nothing about the setup is shown without the key. If `CRON_SECRET` is not set yet the page says to set it first (the scheduled job needs it too). Results that involve Supabase are reused for two minutes. The report is also available to scripts: `GET /api/football?action=diagnostics` with `Authorization: Bearer <CRON_SECRET>`.
+
+## Value check and slip calculator
+
+Both are arithmetic on the forecast, computed in the browser by `server/value.mjs` (published as `/value.js`, unit-tested in Node like the other shared modules). Nothing is sent anywhere.
+
+**Value check** (in the match analysis, under the pick buttons). Choose a selection (home, draw, away, over or under 2.5), type the price a bookmaker offers (decimal `2.25`, fractional `5/4` or American `+125`) and see: the chance the price implies (1 ÷ price), the forecast's chance and fair odds, the edge in percentage points, the expected return per unit staked (chance × price − 1) and a suggested stake. The stake is quarter Kelly (a quarter of the Kelly optimum `(p·b − q)/b`), capped at 2% of a virtual bankroll you set once (kept in your browser's storage only; default 100), and zero when there is no edge. The verdict also says how much to trust it: when the forecast is the bookmakers' consensus, a price above its fair odds is a genuine difference between bookmakers, which is the one edge available to a retail bettor; when the forecast is the app's model, which tested a little worse than the bookmakers, small edges are noise.
+
+**Slip calculator** (on My picks). Pending picks carry an "Add to slip" box. The slip shows the chance that every leg wins (the product of the legs' chances, which treats them as independent and therefore flatters related legs), the fair combined odds (1 ÷ that chance) and "about 1 in N"; enter the bookmaker's combined price (the product of the leg prices) to see the slip's expected return and the chance that price implies. Nine favourites at typical prices come out near 1%, which is what an 80× accumulator is worth before the margin. The selection lives in the page only.
 
 ## Pick statistics
 

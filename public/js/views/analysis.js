@@ -2,6 +2,7 @@ import {analyze, fairOdds} from '/analysis.js';
 import {$, esc, formatDate} from '../dom.js';
 import {state} from '../state.js';
 import {otherMatches, otherMatchesTitle} from '../othermatches.js';
+import {initValueCheck, valueBlockHtml} from './value.js';
 
 const outcomeLabels = (f) => [f.home, 'Draw', f.away];
 
@@ -96,9 +97,11 @@ export function showAnalysis(f) {
     goalsBlock(f, f.goals ?? a.goals) +
     `<h3>Make a virtual pick</h3><div class="pick-buttons">${[0, 1, 2].map(pickButton(f)).join('')}</div>` +
     `<div id="save-message" role="status">${demoNote}</div>` +
+    valueBlockHtml(f) +
     otherMatchesBlock(f) +
     '<div id="insights"></div>' +
     sourceBlock(f);
+  initValueCheck(f);
   if (!$('#analysis').open) $('#analysis').showModal();
   $('#analysis').scrollTop = 0; // opening another match from the list starts at its top
 }

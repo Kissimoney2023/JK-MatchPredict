@@ -7,6 +7,7 @@ import {renderPickStats} from './pickstats.js';
 import {renderReminders} from './reminders.js';
 import {pickLabel, pickProbability} from '/pickstats.js';
 import {fairOdds} from '/analysis.js';
+import {renderSlip, slipToggleHtml} from './slip.js';
 
 /** A pick can be taken back until kickoff, and only while it has no result. */
 const canRemove = (p) => !p.result && Date.parse(p.forecast.kickoff) > Date.now();
@@ -17,7 +18,7 @@ function pickCard(p) {
   const chanceText = Number.isFinite(chance)
     ? ` · ${chance}% · fair ${fairOdds(chance)?.toFixed(2) ?? '—'}`
     : '';
-  return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${esc(p.result || 'Pending')}</span></div><h3>${esc(f.home)} vs ${esc(f.away)}</h3><p><strong>${esc(pickLabel(p) + chanceText)}</strong></p><p class="muted">Kickoff ${esc(formatDate(f.kickoff))}<br>Saved ${esc(formatDate(p.createdAt))}${p.score ? '<br>Regulation score ' + esc(p.score) : ''}<br>${esc(f.source)}</p>${canRemove(p) ? `<div class="pick-actions"><button class="text-button danger" data-remove-pick="${esc(p.id)}">Remove pick</button><small class="muted">Until kickoff</small></div>` : ''}</article>`;
+  return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${esc(p.result || 'Pending')}</span></div><h3>${esc(f.home)} vs ${esc(f.away)}</h3><p><strong>${esc(pickLabel(p) + chanceText)}</strong></p><p class="muted">Kickoff ${esc(formatDate(f.kickoff))}<br>Saved ${esc(formatDate(p.createdAt))}${p.score ? '<br>Regulation score ' + esc(p.score) : ''}<br>${esc(f.source)}</p>${canRemove(p) ? `<div class="pick-actions"><button class="text-button danger" data-remove-pick="${esc(p.id)}">Remove pick</button><small class="muted">Until kickoff</small>${slipToggleHtml(p)}</div>` : ''}</article>`;
 }
 
 const EMPTY_PICKS =
@@ -30,6 +31,7 @@ export async function loadPicks() {
   renderReminders();
   $('#pick-count').textContent = state.picks.length;
   $('#picks').innerHTML = state.picks.length ? state.picks.map(pickCard).join('') : EMPTY_PICKS;
+  renderSlip();
 }
 
 export function exportPicks() {

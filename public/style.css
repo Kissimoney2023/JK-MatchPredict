@@ -1749,3 +1749,59 @@ progress::-moz-progress-bar {
 .ou-picks {
   grid-template-columns: 1fr 1fr;
 }
+
+/* ---------- Value check and slip calculator ---------- */
+.value-check {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.value-check label {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 13px;
+  color: var(--muted);
+}
+.value-yes {
+  color: var(--accent);
+}
+.value-no {
+  color: #fca5a5;
+}
+.slip {
+  margin: var(--space-3) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.slip-legs {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-4);
+}
+.slip-tiles {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.slip-odds {
+  display: grid;
+  gap: var(--space-1);
+  max-width: 420px;
+  margin: var(--space-3) 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.slip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--fg-soft);
+}
+@media (max-width: 640px) {
+  .value-check,
+  .slip-tiles {
+    grid-template-columns: 1fr;
+  }
+}
