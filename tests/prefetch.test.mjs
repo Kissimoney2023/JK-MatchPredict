@@ -167,6 +167,7 @@ test('prefetch endpoint requires the cron secret', async () => {
     prefetch: async () => ({ok: true}),
     reminders: {run: async () => ({sent: 0})},
     potd: {refresh: async () => ({skipped: true})},
+    clv: {captureClosings: async () => ({due: 0})},
     diagnostics: {recordRun: async () => {}},
   });
   const request = (auth) =>
@@ -183,6 +184,7 @@ test('prefetch endpoint requires the cron secret', async () => {
   assert.deepEqual(await ok.json(), {
     ok: true,
     reminders: {sent: 0},
+    clv: {due: 0},
     potd: {skipped: true},
   });
 });

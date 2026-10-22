@@ -198,7 +198,10 @@ export function createProviderClient({env, store, fetcher, now, storage}) {
 
     const cacheKey = 'cache/' + hash(kind + ':' + target(path, body));
     const cached = await read(cacheKey);
-    if (cached && cached.until > now()) return {...cached, fromCache: true};
+    // A caller may ask for a fresher copy than the one stored by passing a shorter `ttl`
+    // (closing lines refresh a schedule that is otherwise kept for hours).
+    if (cached && cached.until > now() && now() - cached.at < ttl)
+      return {...cached, fromCache: true};
 
     try {
       return await load(kind, path, ttl, body, cacheKey);

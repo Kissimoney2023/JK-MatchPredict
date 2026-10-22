@@ -237,6 +237,7 @@ test('the scheduled job records that it ran, so the check can say when', async (
       reminders: {run: async () => ({sent: 0})},
       prefetch: async () => ({errors: []}),
       potd: {refresh: async () => ({skipped: true})},
+      clv: {captureClosings: async () => ({due: 0})},
     }),
     {CRON_SECRET: 'cron-secret-value'},
   );

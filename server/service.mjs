@@ -15,6 +15,7 @@ import {createPickStore} from './service/pickstore.mjs';
 import {createReminders} from './service/reminders.mjs';
 import {createPickOfTheDay} from './service/potd.mjs';
 import {createDiagnostics} from './service/diagnostics.mjs';
+import {createClv} from './service/clv.mjs';
 import {createShares} from './service/shares.mjs';
 import {createSupabase} from './supabase.mjs';
 import {settle} from './model.mjs';
@@ -71,11 +72,13 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
         })
       : null;
   const pickStore = createPickStore({storage, supabase});
+  const clv = createClv({storage, strikerApi, now});
   const {picks, save, settlePicks, settleDue, deletePick, mergePicks} = createPicks({
     now,
     storage,
     lookup,
     pickStore,
+    clv,
   });
   const shares = createShares({supabase, pickStore, storage, now});
   const accounts = createAccounts({env, supabase, storage, now, mergePicks});
@@ -130,6 +133,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
     reminders,
     potd,
     diagnostics,
+    clv,
     prefetch: prefetch.run,
     budget: storage.budget,
   };

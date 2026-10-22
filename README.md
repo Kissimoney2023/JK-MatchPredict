@@ -13,6 +13,7 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - **Over/Under 2.5 virtual picks** next to the home/draw/away ones, settled from the regulation-time total; see Over/Under.
 - **Correct score and Asian handicap**: a scoreline heatmap, the most likely scores with fair odds, and handicap lines (−2.5 to +2.5) with push chances, all consistent with the forecast shown; see Correct score and handicap.
 - **Value check**: type a bookmaker’s price next to any selection to see its implied chance, the expected value against the forecast and a quarter-Kelly stake; see Value check and slip calculator.
+- **Closing line value** on every pick made while StrikerAPI has a line: the bookmakers’ consensus when you picked against their consensus just before kickoff, with "beat the close" and the average movement on My picks; see Closing line value.
 - **Slip calculator**: tick pending picks to see the chance the whole accumulator wins, its fair combined odds and the expected value of a bookmaker’s combined price.
 - API-Football primary; football-data.org fallback where the competition and match can be verified.
 - Forecast source, timestamps, model limitations and missing-data states.
@@ -171,6 +172,16 @@ Both are arithmetic on the forecast, computed in the browser by `server/value.mj
 **Value check** (in the match analysis, under the pick buttons). Choose a selection (home, draw, away, over or under 2.5), type the price a bookmaker offers (decimal `2.25`, fractional `5/4` or American `+125`) and see: the chance the price implies (1 ÷ price), the forecast's chance and fair odds, the edge in percentage points, the expected return per unit staked (chance × price − 1) and a suggested stake. The stake is quarter Kelly (a quarter of the Kelly optimum `(p·b − q)/b`), capped at 2% of a virtual bankroll you set once (kept in your browser's storage only; default 100), and zero when there is no edge. The verdict also says how much to trust it: when the forecast is the bookmakers' consensus, a price above its fair odds is a genuine difference between bookmakers, which is the one edge available to a retail bettor; when the forecast is the app's model, which tested a little worse than the bookmakers, small edges are noise.
 
 **Slip calculator** (on My picks). Pending picks carry an "Add to slip" box. The slip shows the chance that every leg wins (the product of the legs' chances, which treats them as independent and therefore flatters related legs), the fair combined odds (1 ÷ that chance) and "about 1 in N"; enter the bookmaker's combined price (the product of the leg prices) to see the slip's expected return and the chance that price implies. Nine favourites at typical prices come out near 1%, which is what an 80× accumulator is worth before the margin. The selection lives in the page only.
+
+## Closing line value
+
+The most honest measure of picking skill does not wait for results: did the bookmakers move toward your pick between the moment you made it and kickoff? Over many picks, a positive average means your picks carried information the market later priced in; results alone can be luck for a long time.
+
+- **Opening.** Every forecast keeps a snapshot of the StrikerAPI consensus as it stood (`marketSnapshot`: margin-free home/draw/away chances and the total line), whatever source led the forecast. A pick freezes the forecast, so its opening chance is the snapshot's chance for that selection (Over/Under picks read theirs from the total line).
+- **Closing.** When a pick is saved, its match is noted (one note per match, not per pick; at most 500). In the last 75 minutes before kickoff, the scheduled job refreshes each league's schedule once (2 credits per league per matchday, at most 5 leagues per run; a schedule fetched within 90 minutes counts) and stores the consensus per match. The close is shared by everyone who picked that match, so no per-person data changes and accounts need no schema update. Missed runs are retried for two hours after kickoff.
+- **Reading.** `clv.value` is close ÷ open − 1 (+0.05 = the market moved 5% toward the pick); `beatClose` is whether it moved toward the pick at all. My picks shows the average and the beat-the-close rate over picks that have both numbers, and each pick's card shows "48% when picked → 51% at close (+6.3%)". Picks made without a StrikerAPI line, or before this feature, simply carry no value.
+
+The scheduled job must run often for this to work (the GitHub workflow every 15 minutes; see Scheduled prefetch). The per-bookmaker version (best price taken versus each book's close) would cost 5 credits per match and is not built.
 
 ## Pick statistics
 

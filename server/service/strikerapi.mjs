@@ -17,8 +17,9 @@ export function createStrikerApi({env, provider}) {
   const enabled = () => !!env.STRIKERAPI_API_KEY;
   const marketEnabled = () => enabled() && !off(env.STRIKERAPI_MARKET_FORECASTS);
 
-  const schedule = (league) =>
-    provider('sa', 'get_schedule', TTL.schedule, {league, days: SCHEDULE_DAYS});
+  /** The league's schedule with lines; `maxAge` forces a fresher copy (costs credits). */
+  const schedule = (league, maxAge = TTL.schedule) =>
+    provider('sa', 'get_schedule', maxAge, {league, days: SCHEDULE_DAYS});
   const ratings = (league) =>
     provider('sa', 'get_ratings', TTL.ratings, {league, limit: RATINGS_LIMIT});
   const standingsData = (league) => provider('sa', 'get_standings', TTL.standings, {league});

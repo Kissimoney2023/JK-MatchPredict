@@ -63,6 +63,9 @@ export function renderPickStats(picks) {
   ].join('');
 
   const trend = trendBlock(accuracyTrend(picks));
+  const clv = s.closingLine
+    ? `<div class="stat-block"><h4>Closing line value</h4><div class="stat-tiles"><div class="stat-tile"><span class="stat-label">Average movement toward your picks</span><strong>${s.closingLine.averageValue > 0 ? '+' : ''}${(s.closingLine.averageValue * 100).toFixed(1)}%</strong><span class="stat-sub">over ${s.closingLine.n} pick${s.closingLine.n === 1 ? '' : 's'} with a closing line</span></div><div class="stat-tile"><span class="stat-label">Beat the close</span><strong>${pct(s.closingLine.beatCloseRate)}</strong><span class="stat-sub">${s.closingLine.beatClose} of ${s.closingLine.n}: the bookmakers moved your way before kickoff</span></div></div><p class="muted">The bookmakers’ consensus when you picked, against their consensus just before kickoff. Beating the close consistently is the one sign of judgement that does not depend on luck; a few picks prove nothing either way.</p></div>`
+    : '';
   const recent = `<div class="stat-block"><h4>Last ${s.recent.length} results</h4><div class="form">${s.recent.map(recentChip).join('')}</div></div>`;
 
   const confidence = table(
@@ -90,5 +93,5 @@ export function renderPickStats(picks) {
     ? `<p class="muted">Only ${s.settled} settled pick${s.settled === 1 ? '' : 's'} so far. Percentages swing a lot with so few, which is why the range is shown. About ${s.minReliableSample} or more gives a steadier picture.</p>`
     : '';
 
-  box.innerHTML = `<h3>Your results</h3><div class="stat-tiles">${tiles}</div>${caution}${trend}${recent}<div class="stat-grid">${confidence}${competitions}${outcomes}</div>${followText}`;
+  box.innerHTML = `<h3>Your results</h3><div class="stat-tiles">${tiles}</div>${caution}${trend}${clv}${recent}<div class="stat-grid">${confidence}${competitions}${outcomes}</div>${followText}`;
 }

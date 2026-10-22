@@ -1,6 +1,13 @@
 import {AppError} from '../errors.mjs';
 import {hash, HOUR} from '../util.mjs';
-import {probabilities, isOpen, sameMatch, goalModel, goalsFromTotalLine} from '../model.mjs';
+import {
+  probabilities,
+  isOpen,
+  sameMatch,
+  goalModel,
+  goalsFromTotalLine,
+  matchKey,
+} from '../model.mjs';
 import {ratingsForecast} from '../ratings.mjs';
 import {analyze, goalMarkets} from '../analysis.mjs';
 import {matrixFromMarkets, scoreMarkets} from '../scores.mjs';
@@ -188,6 +195,15 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
       }
     } else record = market ? marketRecord(f, market) : await model(f, teamIds);
     record = await withGoals(record, f, teamIds, market);
+    // The bookmakers' consensus as it stood now, whatever led the forecast: picks made on this
+    // forecast compare it with the closing consensus later (closing line value).
+    record = {
+      ...record,
+      canonical: matchKey(f),
+      marketSnapshot: market
+        ? {p: market.p, total: market.total ?? null, books: market.books ?? null, at: now()}
+        : null,
+    };
 
     const forecastAt = now();
     const forecastId = hash(

@@ -12,13 +12,19 @@ import {renderSlip, slipToggleHtml} from './slip.js';
 /** A pick can be taken back until kickoff, and only while it has no result. */
 const canRemove = (p) => !p.result && Date.parse(p.forecast.kickoff) > Date.now();
 
+/** "Market at pick 48% → close 51% (+6.3%)", when both consensus snapshots exist. */
+const clvLine = (p) =>
+  p.clv
+    ? `<br>Bookmakers: ${p.clv.open}% when picked → ${p.clv.close}% at close (${p.clv.value > 0 ? '+' : ''}${(p.clv.value * 100).toFixed(1)}%)`
+    : '';
+
 function pickCard(p) {
   const f = p.forecast;
   const chance = pickProbability(p);
   const chanceText = Number.isFinite(chance)
     ? ` · ${chance}% · fair ${fairOdds(chance)?.toFixed(2) ?? '—'}`
     : '';
-  return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${esc(p.result || 'Pending')}</span></div><h3>${esc(f.home)} vs ${esc(f.away)}</h3><p><strong>${esc(pickLabel(p) + chanceText)}</strong></p><p class="muted">Kickoff ${esc(formatDate(f.kickoff))}<br>Saved ${esc(formatDate(p.createdAt))}${p.score ? '<br>Regulation score ' + esc(p.score) : ''}<br>${esc(f.source)}</p>${canRemove(p) ? `<div class="pick-actions"><button class="text-button danger" data-remove-pick="${esc(p.id)}">Remove pick</button><small class="muted">Until kickoff</small>${slipToggleHtml(p)}</div>` : ''}</article>`;
+  return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${esc(p.result || 'Pending')}</span></div><h3>${esc(f.home)} vs ${esc(f.away)}</h3><p><strong>${esc(pickLabel(p) + chanceText)}</strong></p><p class="muted">Kickoff ${esc(formatDate(f.kickoff))}<br>Saved ${esc(formatDate(p.createdAt))}${p.score ? '<br>Regulation score ' + esc(p.score) : ''}<br>${esc(f.source)}${clvLine(p)}</p>${canRemove(p) ? `<div class="pick-actions"><button class="text-button danger" data-remove-pick="${esc(p.id)}">Remove pick</button><small class="muted">Until kickoff</small>${slipToggleHtml(p)}</div>` : ''}</article>`;
 }
 
 const EMPTY_PICKS =

@@ -67,6 +67,25 @@ export function pickKind(pick) {
 
 const probabilityOnPick = pickProbability;
 
+/**
+ * Closing line value across picks that carry one (`pick.clv`, attached by the server): the
+ * average movement of the bookmakers' consensus toward the pick between pick and kickoff, and
+ * how often it moved that way at all. Positive on average, over many picks, is the one sign
+ * of judgement that does not depend on results.
+ */
+export function closingLineSummary(picks) {
+  const withClv = (Array.isArray(picks) ? picks : []).filter((p) => Number.isFinite(p?.clv?.value));
+  if (!withClv.length) return null;
+  const n = withClv.length;
+  const beat = withClv.filter((p) => p.clv.beatClose).length;
+  return {
+    n,
+    averageValue: Math.round((withClv.reduce((s, p) => s + p.clv.value, 0) / n) * 1000) / 1000,
+    beatClose: beat,
+    beatCloseRate: Math.round((beat / n) * 1000) / 1000,
+  };
+}
+
 /** Groups settled picks and reports count, correct picks and accuracy for each group. */
 function groupBy(settled, keyOf) {
   const groups = new Map();
@@ -198,6 +217,7 @@ export function summarizePicks(picks) {
       against: {settled: against.length, accuracy: hitRate(against)},
     },
     expectedCorrect: Math.round(expected * 10) / 10,
+    closingLine: closingLineSummary(all),
     smallSample: settled.length < MIN_RELIABLE_SAMPLE,
     minReliableSample: MIN_RELIABLE_SAMPLE,
   };

@@ -7,11 +7,15 @@ const SETTLE_DELAY = 105 * 60_000;
 const SETTLE_BATCH = 3;
 
 /** Virtual picks: save, list and settle. `pickStore` hides where they are kept. */
-export function createPicks({now, storage, lookup, pickStore}) {
+export function createPicks({now, storage, lookup, pickStore, clv}) {
   const {read} = storage;
   const {fresh} = lookup;
 
-  const picks = (sid) => pickStore.list(sid);
+  /** All picks, with closing line value attached where both consensus snapshots exist. */
+  const picks = async (sid) => {
+    const list = await pickStore.list(sid);
+    return clv ? clv.decorate(list) : list;
+  };
 
   /**
    * Saves a virtual pick on a forecast. `market` 'result' (outcome 0/1/2 = home, draw, away)
@@ -56,7 +60,9 @@ export function createPicks({now, storage, lookup, pickStore}) {
       result: null,
       score: null,
     };
-    return {saved: await pickStore.add(sid, pick)};
+    const saved = await pickStore.add(sid, pick);
+    if (saved && clv) await clv.noteUpcoming(f);
+    return {saved};
   }
 
   /**

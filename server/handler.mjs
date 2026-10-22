@@ -235,10 +235,15 @@ export function makePrefetchHandler(deps, env) {
         console.error('reminders failed', e);
         return {error: 'Reminders failed.'};
       });
+      // Closing lines are time-sensitive too: matches about to kick off.
+      const clv = await service.clv.captureClosings().catch((e) => {
+        console.error('closing lines failed', e);
+        return {error: 'Closing lines failed.'};
+      });
       const warmed = await service.prefetch();
       // The pick of the day last: it reads the histories and tables that were just warmed.
       const potd = await service.potd.refresh();
-      const summary = {...warmed, reminders, potd};
+      const summary = {...warmed, reminders, clv, potd};
       await service.diagnostics.recordRun(summary); // so the setup check can say when it last ran
       return respond(summary);
     } catch (e) {
