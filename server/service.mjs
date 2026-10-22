@@ -16,6 +16,7 @@ import {createReminders} from './service/reminders.mjs';
 import {createPickOfTheDay} from './service/potd.mjs';
 import {createDiagnostics} from './service/diagnostics.mjs';
 import {createClv} from './service/clv.mjs';
+import {createCalibration} from './service/calibration.mjs';
 import {createShares} from './service/shares.mjs';
 import {createSupabase} from './supabase.mjs';
 import {settle} from './model.mjs';
@@ -47,6 +48,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
     const result = await fixtures(params);
     return {...result, fixtures: await withForm(result.fixtures)};
   };
+  const calibration = createCalibration({storage, now, lookup});
   const {forecast} = createForecast({
     env,
     store,
@@ -56,6 +58,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
     lookup,
     history,
     strikerApi,
+    calibration,
   });
   // Accounts and their picks live in Supabase (optional); everything else uses the store.
   const supabaseUrl = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
@@ -134,6 +137,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
     potd,
     diagnostics,
     clv,
+    calibration,
     prefetch: prefetch.run,
     budget: storage.budget,
   };

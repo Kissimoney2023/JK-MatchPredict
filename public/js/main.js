@@ -14,6 +14,7 @@ import {initShare} from './views/share.js';
 import {initReminders} from './views/reminders.js';
 import {loadPotd} from './views/potd.js';
 import {initSlip} from './views/slip.js';
+import {loadCalibration} from './views/calibration.js';
 import {initDiagnostics} from './views/diagnostics.js';
 import {initAccountUi, renderAccount, finishLogin, takeLoginReturn} from './views/account.js';
 
@@ -105,6 +106,7 @@ function switchView(view) {
   $('#method-view').classList.toggle('hidden', view !== 'method');
   $$('[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   if (view === 'picks') run(loadPicks, '#pick-message');
+  if (view === 'method') loadCalibration(); // reads stored aggregates; never blocks the page
 }
 
 function startDemo() {

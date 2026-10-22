@@ -85,6 +85,7 @@ export function makeHandler(deps, env = process.env) {
           });
         if (action === 'leagues') return json(await service.catalog());
         if (action === 'potd') return json(await service.potd.current());
+        if (action === 'calibration') return json(await service.calibration.report());
         if (action === 'diagnostics') {
           // The report is for the site owner. The CRON_SECRET they already set in Vercel opens it,
           // so no extra account or setting is needed, and nothing about the setup is public.
@@ -243,7 +244,11 @@ export function makePrefetchHandler(deps, env) {
       const warmed = await service.prefetch();
       // The pick of the day last: it reads the histories and tables that were just warmed.
       const potd = await service.potd.refresh();
-      const summary = {...warmed, reminders, clv, potd};
+      const calibration = await service.calibration.settle().catch((e) => {
+        console.error('forecast record failed', e);
+        return {error: 'Forecast record failed.'};
+      });
+      const summary = {...warmed, reminders, clv, potd, calibration};
       await service.diagnostics.recordRun(summary); // so the setup check can say when it last ran
       return respond(summary);
     } catch (e) {

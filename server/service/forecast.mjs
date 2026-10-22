@@ -20,7 +20,17 @@ const marketLeads = (env) =>
     .trim()
     .toLowerCase() !== 'api-football';
 
-export function createForecast({env, store, now, storage, provider, lookup, history, strikerApi}) {
+export function createForecast({
+  env,
+  store,
+  now,
+  storage,
+  provider,
+  lookup,
+  history,
+  strikerApi,
+  calibration,
+}) {
   const {read} = storage;
   const {mappedFD, fresh} = lookup;
 
@@ -211,6 +221,7 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
     );
     record = {...record, forecastAt, forecastId, analysis: analyze(record)};
     const saved = await store.setJSON('forecast/' + forecastId, record, {onlyIfNew: true});
+    if (saved.modified && calibration) await calibration.log(record); // a new forecast, as shown
     return saved.modified ? record : await read('forecast/' + forecastId);
   }
 

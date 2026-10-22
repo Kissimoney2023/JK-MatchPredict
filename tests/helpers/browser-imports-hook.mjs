@@ -4,6 +4,7 @@ const SHARED = {
   '/pickstats.js': 'server/pickstats.mjs',
   '/trend.js': 'server/trend.mjs',
   '/value.js': 'server/value.mjs',
+  '/calibration.js': 'server/calibration.mjs',
 };
 
 export async function resolve(specifier, context, next) {

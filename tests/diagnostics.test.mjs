@@ -238,6 +238,7 @@ test('the scheduled job records that it ran, so the check can say when', async (
       prefetch: async () => ({errors: []}),
       potd: {refresh: async () => ({skipped: true})},
       clv: {captureClosings: async () => ({due: 0})},
+      calibration: {settle: async () => ({due: 0})},
     }),
     {CRON_SECRET: 'cron-secret-value'},
   );

@@ -1911,3 +1911,78 @@ progress::-moz-progress-bar {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Live forecast record ---------- */
+.cal-source {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.cal-source h4 {
+  margin: 0 0 var(--space-1);
+}
+.cal-source h5 {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: 13px;
+  color: var(--muted);
+}
+.cal-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.cal {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+}
+.cal-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.cal-axis {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+}
+.cal-diagonal {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.cal-line {
+  stroke: var(--accent-line);
+  stroke-width: 1.5;
+}
+.cal-point {
+  fill: var(--accent);
+  stroke: var(--bg);
+  stroke-width: 1.5;
+}
+.cal-source table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cal-source th,
+.cal-source td {
+  padding: 4px 6px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+.cal-source th {
+  color: var(--muted);
+  font-weight: 500;
+}
+.cal-source .num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+@media (max-width: 640px) {
+  .cal-wrap {
+    grid-template-columns: 1fr;
+  }
+}
