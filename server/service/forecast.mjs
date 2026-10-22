@@ -187,7 +187,13 @@ export function createForecast({
 
     const market = await strikerApi.marketFor(f);
     let record;
-    if (market && marketLeads(env)) record = marketRecord(f, market);
+    if (f.provider === 'sa' && !market)
+      throw new AppError(
+        404,
+        'forecast',
+        'No bookmaker line yet for this match. This competition is forecast from the bookmakers’ consensus only; lines usually appear a few days before kickoff.',
+      );
+    if (market && (marketLeads(env) || f.provider === 'sa')) record = marketRecord(f, market);
     else if (f.provider === 'ap') {
       try {
         const d = await provider('ap', `predictions?fixture=${f.externalId}`, HOUR);

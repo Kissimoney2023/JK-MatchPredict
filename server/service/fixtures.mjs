@@ -7,7 +7,7 @@ const FIXTURES_TTL = 30 * 60_000;
 const staleNote = (at) =>
   `Showing saved data from ${new Date(at).toISOString().slice(0, 16).replace('T', ' ')} UTC; the provider is temporarily unavailable.`;
 
-export function createFixtures({env, store, provider, league}) {
+export function createFixtures({env, store, provider, league, strikerApi}) {
   async function fixtureResult(items, data, source, warnings) {
     items.sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff));
     const listingId = hash(JSON.stringify([source, data.at, items.map((f) => f.key)]));
@@ -20,6 +20,21 @@ export function createFixtures({env, store, provider, league}) {
     const {from, to} = dates(params);
     const selected = await league(params.get('league'));
     const errors = [];
+
+    // A StrikerAPI-only competition: its schedule and games are the whole source.
+    if (selected?.saOnly) {
+      const competition = strikerApi
+        .onlyCompetitions()
+        .find((c) => 'sa:' + c.league === selected.key);
+      if (!competition)
+        throw new AppError(503, 'unavailable', 'This competition needs StrikerAPI configured.');
+      const data = await strikerApi.fixturesFor(competition, from, to);
+      if (data.stale) errors.push(staleNote(data.at));
+      errors.push(
+        'Fixtures and results come from StrikerAPI; forecasts for this competition use the bookmakers’ consensus only, so a match without a line yet has no forecast.',
+      );
+      return await fixtureResult(data.items, {at: data.at}, 'StrikerAPI', errors);
+    }
 
     if (env.API_FOOTBALL_KEY && (!selected || selected.apId)) {
       try {

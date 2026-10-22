@@ -4,7 +4,7 @@ import {fdSettlementRaw, sameMatch} from '../model.mjs';
 import {normAP, normFD} from './normalize.mjs';
 
 /** Single-match lookups, including cross-provider verification of the same fixture. */
-export function createLookup({env, provider}) {
+export function createLookup({env, provider, strikerApi}) {
   /** Fetches a match by its `ap:<id>` / `fd:<id>` key from its own provider. */
   async function direct(key) {
     if (!/^(ap|fd):[1-9]\d{0,11}$/.test(key))
@@ -46,6 +46,7 @@ export function createLookup({env, provider}) {
 
   /** Latest state of a match, using the fallback provider if the primary lookup fails. */
   async function fresh(f) {
+    if (f.provider === 'sa') return strikerApi.gameState(f); // StrikerAPI-only competitions
     try {
       return await direct(f.key);
     } catch (e) {

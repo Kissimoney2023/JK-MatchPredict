@@ -6,7 +6,7 @@ const ALL_LEAGUES_BUTTON = (active) =>
   `<button class="league ${active ? 'active' : ''}" data-league="all"><span class="league-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg></span><span>All available leagues<small>One UTC date at a time</small></span></button>`;
 
 const leagueButton = (l) =>
-  `<button class="league ${l.key === state.league ? 'active' : ''}" data-league="${esc(l.key)}"><span class="league-icon">${esc(l.country?.slice(0, 2).toUpperCase())}</span><span>${esc(l.name)}<small>${esc(l.country)}${l.fallback ? ' · fallback available' : ''}</small></span></button>`;
+  `<button class="league ${l.key === state.league ? 'active' : ''}" data-league="${esc(l.key)}"><span class="league-icon">${esc(l.country?.slice(0, 2).toUpperCase())}</span><span>${esc(l.name)}<small>${esc(l.country)}${l.fallback ? ' · fallback available' : ''}${l.saOnly ? ' · via StrikerAPI, market forecasts' : ''}</small></span></button>`;
 
 export function renderLeagues() {
   const query = $('#league-search').value.toLowerCase();

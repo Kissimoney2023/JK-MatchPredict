@@ -1,5 +1,15 @@
 import {HOUR, DAY} from '../util.mjs';
-import {eloExpectedScore, findGame, marketFromLine, saLeagueFor, sameTeam} from '../strikerapi.mjs';
+import {
+  eloExpectedScore,
+  findGame,
+  marketFromLine,
+  normSA,
+  saLeagueFor,
+  saSettlementRaw,
+  sameTeam,
+  SA_ONLY_COMPETITIONS,
+} from '../strikerapi.mjs';
+import {AppError} from '../errors.mjs';
 
 const TTL = {
   schedule: 12 * HOUR,
@@ -8,7 +18,9 @@ const TTL = {
   headToHead: 7 * DAY,
   teamStats: 7 * DAY, // per-match averages move slowly; 5 credits per league per week
   lineups: 10 * 60_000, // short: an answer before the teams are named must not stick
+  games: 2 * HOUR, // results of a competition over a date range
 };
+const GAMES_LIMIT = 200;
 
 const num = (v) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null);
 
@@ -46,7 +58,7 @@ const off = (v) => ['off', 'false', '0', 'no'].includes(String(v ?? '').toLowerC
  * Everything here is optional; failures return null so the app falls back to other sources.
  * Calls are cached for hours or days and capped by STRIKERAPI_MONTHLY_CREDITS.
  */
-export function createStrikerApi({env, provider}) {
+export function createStrikerApi({env, provider, now = Date.now}) {
   const enabled = () => !!env.STRIKERAPI_API_KEY;
   const marketEnabled = () => enabled() && !off(env.STRIKERAPI_MARKET_FORECASTS);
 
@@ -89,6 +101,71 @@ export function createStrikerApi({env, provider}) {
   /** Line-ups for a game (5 credits); the raw body, parsed by the lineups service. */
   const lineups = (league, gameId) =>
     provider('sa', 'get_lineups', TTL.lineups, {league, game_id: gameId});
+
+  /** Games of a competition between two dates (results included), 2 credits per call. */
+  const listGames = (league, from, to) =>
+    provider('sa', 'list_games', TTL.games, {league, from, to, limit: GAMES_LIMIT});
+
+  const gameRows = (body) => body?.games ?? body?.rows ?? (Array.isArray(body) ? body : []);
+
+  /** The competitions served from StrikerAPI alone (when it is configured). */
+  const onlyCompetitions = () => (enabled() ? SA_ONLY_COMPETITIONS : []);
+
+  /**
+   * Fixtures of a StrikerAPI-only competition for a date range (UTC days, inclusive): the
+   * schedule for what is to come, the games list for what was played. Merged by game id.
+   */
+  async function fixturesFor(competition, from, to) {
+    const byId = new Map();
+    let at = 0;
+    let stale = false;
+    const start = Date.parse(from);
+    const end = Date.parse(to) + DAY;
+    const take = (rows) => {
+      for (const game of rows) {
+        const f = normSA(game, competition);
+        if (!f) continue;
+        const t = Date.parse(f.kickoff);
+        if (t >= start && t < end) byId.set(f.key, f);
+      }
+    };
+    // Results and anything already played: only when the range reaches into the past.
+    if (start < now()) {
+      const r = await listGames(competition.league, from, to);
+      take(gameRows(r.body));
+      at = Math.max(at, r.at ?? 0);
+      stale = stale || !!r.stale;
+    }
+    // Upcoming matches, with their market line, from the schedule (cached for hours).
+    if (end > now()) {
+      const r = await schedule(competition.league);
+      take(r.body.games ?? []);
+      at = Math.max(at, r.at ?? 0);
+      stale = stale || !!r.stale;
+    }
+    return {items: [...byId.values()], at: at || now(), stale};
+  }
+
+  /** The current state of one StrikerAPI fixture (for settlement), from its day's games. */
+  async function gameState(fixture) {
+    const league = saLeagueFor(fixture.fdCode);
+    if (!enabled() || !league) throw new AppError(404, 'fixture', 'Match data is unavailable.');
+    const day = String(fixture.kickoff).slice(0, 10);
+    const r = await listGames(league, day, day);
+    const game = gameRows(r.body).find((g) => String(g.game_id ?? g.id) === fixture.externalId);
+    if (!game) {
+      // Not yet in the games list: the schedule still knows it (upcoming, maybe live).
+      const s = await schedule(league);
+      const upcoming = (s.body.games ?? []).find(
+        (g) => String(g.game_id ?? g.id) === fixture.externalId,
+      );
+      if (!upcoming) throw new AppError(404, 'fixture', 'Match data is unavailable.');
+      const f = normSA(upcoming, {name: fixture.competition, league, code: fixture.fdCode});
+      return {f, raw: saSettlementRaw(upcoming)};
+    }
+    const f = normSA(game, {name: fixture.competition, league, code: fixture.fdCode});
+    return {f, raw: saSettlementRaw(game)};
+  }
   const standingsData = (league) => provider('sa', 'get_standings', TTL.standings, {league});
 
   /** Runs an optional lookup; any failure (quota, outage, bad data) becomes null. */
@@ -221,5 +298,8 @@ export function createStrikerApi({env, provider}) {
     xgFor,
     gameIdFor,
     lineups,
+    onlyCompetitions,
+    fixturesFor,
+    gameState,
   };
 }

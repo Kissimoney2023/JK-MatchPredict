@@ -29,11 +29,11 @@ export {hash, dates} from './util.mjs';
 export function createService({env, store, fetcher = fetch, now = Date.now, sendPush}) {
   const storage = createStorage({store, now});
   const provider = createProviderClient({env, store, fetcher, now, storage});
-  const {catalog, league} = createCatalog({env, provider});
-  const {fixtures} = createFixtures({env, store, provider, league});
-  const lookup = createLookup({env, provider});
+  const strikerApi = createStrikerApi({env, provider, now});
+  const {catalog, league} = createCatalog({env, provider, strikerApi});
+  const {fixtures} = createFixtures({env, store, provider, league, strikerApi});
+  const lookup = createLookup({env, provider, strikerApi});
   const history = createHistory({provider, now});
-  const strikerApi = createStrikerApi({env, provider});
   const {standings} = createStandings({env, provider, league, strikerApi});
   const lineups = createLineups({storage, strikerApi, now});
   const {withForm, insights} = createInsights({

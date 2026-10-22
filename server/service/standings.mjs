@@ -47,7 +47,7 @@ export function createStandings({env, provider, league, strikerApi}) {
       throw new AppError(404, 'standings', 'Standings are not available for this competition.');
 
     let firstError = null;
-    if (env.FOOTBALL_DATA_ORG_KEY) {
+    if (env.FOOTBALL_DATA_ORG_KEY && !selected.saOnly) {
       try {
         return await fromFootballData(selected);
       } catch (e) {

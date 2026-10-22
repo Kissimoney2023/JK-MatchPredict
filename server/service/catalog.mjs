@@ -4,7 +4,22 @@ import {LEAGUE_MAPPING} from './normalize.mjs';
 
 // Competitions shown first, in this order (API-Football ids / football-data.org codes).
 const FEATURED_AP = [2, 3, 848, 39, 140, 78, 135, 61, 94, 88, 40, 71, 1, 4];
-const FEATURED_FD = ['CL', 'EC', 'PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL', 'DED', 'ELC', 'BSA', 'WC'];
+const FEATURED_FD = [
+  'CL',
+  'UEL',
+  'UECL',
+  'EC',
+  'PL',
+  'PD',
+  'BL1',
+  'SA',
+  'FL1',
+  'PPL',
+  'DED',
+  'ELC',
+  'BSA',
+  'WC',
+];
 
 // Round / qualifier / play-off style entries that clutter the list ("2nd Round - Group 1").
 const MINOR_NAME =
@@ -35,10 +50,24 @@ export function organize(leagues) {
     .map(({rank, ...l}) => l);
 }
 
-export function createCatalog({env, provider}) {
+export function createCatalog({env, provider, strikerApi}) {
   async function catalog() {
     const items = new Map();
     const warnings = [];
+
+    // Competitions only StrikerAPI covers (Europa League, Conference League): listed unless a
+    // football API lists the same code. Their forecasts come from the market line alone.
+    for (const c of strikerApi?.onlyCompetitions?.() ?? [])
+      items.set('sa:' + c.league, {
+        key: 'sa:' + c.league,
+        name: c.name,
+        country: c.country,
+        fdCode: c.code,
+        season: null,
+        source: 'StrikerAPI',
+        saOnly: true,
+        type: 'CUP',
+      });
 
     if (env.API_FOOTBALL_KEY) {
       try {
@@ -69,7 +98,9 @@ export function createCatalog({env, provider}) {
         for (const c of r.body.competitions ?? []) {
           if (!c.code) continue;
           const shared = [...items.values()].find((x) => x.fdCode === c.code);
-          if (shared) {
+          if (shared?.saOnly)
+            items.delete(shared.key); // a real football API lists it: prefer that
+          else if (shared) {
             shared.fallback = true;
             continue;
           }
