@@ -1,6 +1,7 @@
 import {AppError} from '../errors.mjs';
 import {goalRates, headToHead, recentForm, teamStats} from '../form.mjs';
 import {sameTeam} from '../strikerapi.mjs';
+import {matchKey} from '../model.mjs';
 
 const FORM_GAMES = 5;
 const teamIdsOf = (items) => [
@@ -10,7 +11,16 @@ const teamIdsOf = (items) => [
 ];
 
 /** Team form and head-to-head, derived from the cached football-data.org histories. */
-export function createInsights({env, now, storage, history, lookup, strikerApi, standings}) {
+export function createInsights({
+  env,
+  now,
+  storage,
+  history,
+  lookup,
+  strikerApi,
+  standings,
+  lineups,
+}) {
   const {read} = storage;
 
   /**
@@ -130,7 +140,7 @@ export function createInsights({env, now, storage, history, lookup, strikerApi, 
     const known = listing?.items?.find((f) => f.key === key);
     if (!known) throw new AppError(404, 'fixture', 'Load this match from the match browser first.');
 
-    const [form, market, elo, competitionHeadToHead, position] = await Promise.all([
+    const [form, market, elo, competitionHeadToHead, position, xg, teamSheets] = await Promise.all([
       env.FOOTBALL_DATA_ORG_KEY
         ? formInsights(known).then(
             (value) => value,
@@ -141,11 +151,20 @@ export function createInsights({env, now, storage, history, lookup, strikerApi, 
       strikerApi.eloFor(known),
       strikerApi.headToHeadFor(known),
       leaguePosition(known),
+      strikerApi.xgFor ? strikerApi.xgFor(known) : null,
+      lineups ? lineups.get(matchKey(known)).catch(() => null) : null,
     ]);
     const formResult = form?.error ? null : form;
-    const extras = {market, elo, competitionHeadToHead, leaguePosition: position};
+    const extras = {
+      market,
+      elo,
+      competitionHeadToHead,
+      leaguePosition: position,
+      xg,
+      lineups: teamSheets,
+    };
     // Nothing at all to show: surface the form error instead of an empty panel.
-    if (!formResult && !market && !elo && !competitionHeadToHead && !position)
+    if (!formResult && !market && !elo && !competitionHeadToHead && !position && !xg && !teamSheets)
       throw (
         form?.error ?? new AppError(404, 'insights', 'No insights are available for this match.')
       );

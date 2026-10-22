@@ -39,6 +39,8 @@ const SA_COSTS = {
   get_standings: 2,
   get_ratings: 2,
   get_head_to_head: 2,
+  get_team_stats: 5,
+  get_lineups: 5,
 };
 const SA_DEFAULT_COST = 10;
 const SA_DEFAULT_MONTHLY_CREDITS = 450; // free tier is 500; keep a margin

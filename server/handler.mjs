@@ -241,6 +241,10 @@ export function makePrefetchHandler(deps, env) {
         console.error('closing lines failed', e);
         return {error: 'Closing lines failed.'};
       });
+      const lineups = await service.lineups.capture().catch((e) => {
+        console.error('line-ups failed', e);
+        return {error: 'Line-ups failed.'};
+      });
       const warmed = await service.prefetch();
       // The pick of the day last: it reads the histories and tables that were just warmed.
       const potd = await service.potd.refresh();
@@ -248,7 +252,7 @@ export function makePrefetchHandler(deps, env) {
         console.error('forecast record failed', e);
         return {error: 'Forecast record failed.'};
       });
-      const summary = {...warmed, reminders, clv, potd, calibration};
+      const summary = {...warmed, reminders, clv, lineups, potd, calibration};
       await service.diagnostics.recordRun(summary); // so the setup check can say when it last ran
       return respond(summary);
     } catch (e) {

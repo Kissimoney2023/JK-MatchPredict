@@ -1,7 +1,40 @@
 import {HOUR, DAY} from '../util.mjs';
 import {eloExpectedScore, findGame, marketFromLine, saLeagueFor, sameTeam} from '../strikerapi.mjs';
 
-const TTL = {schedule: 12 * HOUR, ratings: 24 * HOUR, standings: 12 * HOUR, headToHead: 7 * DAY};
+const TTL = {
+  schedule: 12 * HOUR,
+  ratings: 24 * HOUR,
+  standings: 12 * HOUR,
+  headToHead: 7 * DAY,
+  teamStats: 7 * DAY, // per-match averages move slowly; 5 credits per league per week
+  lineups: 10 * 60_000, // short: an answer before the teams are named must not stick
+};
+
+const num = (v) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null);
+
+/**
+ * One club's per-match averages from a team-stats row. Field names follow the StrikerAPI
+ * docs (`xg_for`, `xg_against`, goals for and against); a few likely variants are accepted
+ * and anything unreadable becomes null rather than an error.
+ */
+export function parseTeamStats(row) {
+  if (!row) return null;
+  const pick = (...keys) => {
+    for (const k of keys) if (row[k] !== undefined) return num(row[k]);
+    return null;
+  };
+  const stats = {
+    name: row.name ?? row.team ?? row.team_name ?? null,
+    games: pick('games', 'played', 'matches', 'gp'),
+    xgFor: pick('xg_for', 'xg', 'xgf'),
+    xgAgainst: pick('xg_against', 'xga'),
+    goalsFor: pick('goals_for', 'goals', 'gf'),
+    goalsAgainst: pick('goals_against', 'ga'),
+    shots: pick('shots', 'shots_for'),
+    shotsOnTarget: pick('shots_on_target', 'sot'),
+  };
+  return stats.xgFor === null && stats.xgAgainst === null ? null : stats;
+}
 const SCHEDULE_DAYS = 30;
 const RATINGS_LIMIT = 200;
 const H2H_LIST = 5;
@@ -22,6 +55,40 @@ export function createStrikerApi({env, provider}) {
     provider('sa', 'get_schedule', maxAge, {league, days: SCHEDULE_DAYS});
   const ratings = (league) =>
     provider('sa', 'get_ratings', TTL.ratings, {league, limit: RATINGS_LIMIT});
+  /** Every club's per-match averages (including xG) in one call. */
+  const teamStats = (league) => provider('sa', 'get_team_stats', TTL.teamStats, {league});
+
+  /** Rows of a team-stats response, whatever the envelope is called. */
+  const statRows = (body) =>
+    body?.stats ?? body?.teams ?? body?.rows ?? (Array.isArray(body) ? body : []);
+
+  /** xG for and against per match for both clubs, from the league's averages. */
+  const xgFor = (fixture) =>
+    optional(async () => {
+      const league = saLeagueFor(fixture.fdCode);
+      if (!enabled() || !league) return null;
+      const r = await teamStats(league);
+      const rows = statRows(r.body);
+      const find = (name) =>
+        parseTeamStats(rows.find((row) => sameTeam(row.name ?? row.team ?? row.team_name, name)));
+      const home = find(fixture.home);
+      const away = find(fixture.away);
+      if (!home && !away) return null;
+      return {home, away, league, fetchedAt: r.at, stale: !!r.stale, asOf: r.body?.as_of ?? null};
+    });
+
+  /** The schedule's game id for a fixture (from the cached schedule), or null. */
+  const gameIdFor = (fixture) =>
+    optional(async () => {
+      const league = saLeagueFor(fixture.fdCode);
+      if (!enabled() || !league) return null;
+      const game = findGame((await schedule(league)).body.games ?? [], fixture);
+      return game ? {gameId: game.game_id, league} : null;
+    });
+
+  /** Line-ups for a game (5 credits); the raw body, parsed by the lineups service. */
+  const lineups = (league, gameId) =>
+    provider('sa', 'get_lineups', TTL.lineups, {league, game_id: gameId});
   const standingsData = (league) => provider('sa', 'get_standings', TTL.standings, {league});
 
   /** Runs an optional lookup; any failure (quota, outage, bad data) becomes null. */
@@ -151,5 +218,8 @@ export function createStrikerApi({env, provider}) {
     eloFor,
     headToHeadFor,
     standingsFor,
+    xgFor,
+    gameIdFor,
+    lineups,
   };
 }

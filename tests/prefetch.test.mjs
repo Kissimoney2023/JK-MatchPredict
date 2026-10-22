@@ -169,6 +169,7 @@ test('prefetch endpoint requires the cron secret', async () => {
     potd: {refresh: async () => ({skipped: true})},
     clv: {captureClosings: async () => ({due: 0})},
     calibration: {settle: async () => ({due: 0})},
+    lineups: {capture: async () => ({due: 0})},
     diagnostics: {recordRun: async () => {}},
   });
   const request = (auth) =>
@@ -186,6 +187,7 @@ test('prefetch endpoint requires the cron secret', async () => {
     ok: true,
     reminders: {sent: 0},
     clv: {due: 0},
+    lineups: {due: 0},
     potd: {skipped: true},
     calibration: {due: 0},
   });

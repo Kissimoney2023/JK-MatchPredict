@@ -48,9 +48,12 @@ export function closingLineValue(pick, close) {
 export function createClv({storage, strikerApi, now}) {
   const {read, atomic} = storage;
 
-  /** Remembers a match whose closing line is worth recording (called when a pick is saved). */
+  /**
+   * Remembers a match people picked (called when a pick is saved): its closing line and its
+   * line-ups are worth recording. Only competitions StrikerAPI covers.
+   */
   async function noteUpcoming(forecast) {
-    if (!forecast?.marketSnapshot || !saLeagueFor(forecast.fdCode)) return;
+    if (!strikerApi.enabled() || !forecast?.canonical || !saLeagueFor(forecast.fdCode)) return;
     try {
       await atomic(PENDING, (old) => {
         const items = (old?.items ?? []).filter((i) => Date.parse(i.kickoff) > now() - GRACE_MS);

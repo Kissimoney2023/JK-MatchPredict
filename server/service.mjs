@@ -17,6 +17,7 @@ import {createPickOfTheDay} from './service/potd.mjs';
 import {createDiagnostics} from './service/diagnostics.mjs';
 import {createClv} from './service/clv.mjs';
 import {createCalibration} from './service/calibration.mjs';
+import {createLineups} from './service/lineups.mjs';
 import {createShares} from './service/shares.mjs';
 import {createSupabase} from './supabase.mjs';
 import {settle} from './model.mjs';
@@ -34,6 +35,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
   const history = createHistory({provider, now});
   const strikerApi = createStrikerApi({env, provider});
   const {standings} = createStandings({env, provider, league, strikerApi});
+  const lineups = createLineups({storage, strikerApi, now});
   const {withForm, insights} = createInsights({
     env,
     now,
@@ -42,6 +44,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
     lookup,
     strikerApi,
     standings,
+    lineups,
   });
   // Fixture lists include each team's recent form when its history is already cached.
   const fixturesWithForm = async (params) => {
@@ -138,6 +141,7 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
     diagnostics,
     clv,
     calibration,
+    lineups,
     prefetch: prefetch.run,
     budget: storage.budget,
   };

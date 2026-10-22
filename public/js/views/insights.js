@@ -130,11 +130,45 @@ function positionBlock(position, names) {
   return `<h3>League position</h3><div class="stat-tiles position-tiles">${tile(names.home, position.home)}${tile(names.away, position.away)}</div><p class="muted">${esc(position.competition)}${position.season ? ' · ' + esc(position.season) + ' season' : ''}${when}${copy} · source: ${esc(position.source)}</p>`;
 }
 
+const dec = (v, places = 2) => (Number.isFinite(v) ? v.toFixed(places) : '—');
+
+/** Expected goals for and against per match for both clubs, and the gap to real goals. */
+function xgBlock(xg, names) {
+  if (!xg) return '';
+  const side = (name, s) => {
+    if (!s)
+      return `<div class="stat-tile"><span class="stat-label">${esc(name)}</span><strong>—</strong><span class="stat-sub">not in this competition’s averages</span></div>`;
+    const xgd = s.xgFor !== null && s.xgAgainst !== null ? s.xgFor - s.xgAgainst : null;
+    const gd = s.goalsFor !== null && s.goalsAgainst !== null ? s.goalsFor - s.goalsAgainst : null;
+    const gap = xgd !== null && gd !== null ? gd - xgd : null;
+    const luck =
+      gap === null
+        ? ''
+        : s.games !== null && s.games < 10
+          ? ` · gap to real goals ${gap > 0 ? '+' : ''}${dec(gap)} (too few matches to call luck)`
+          : Math.abs(gap) >= 0.3
+            ? ` · ${gap > 0 ? 'scoring well above' : 'scoring well below'} its chances (${gap > 0 ? '+' : ''}${dec(gap)} per match)`
+            : ` · goals in line with chances (${gap > 0 ? '+' : ''}${dec(gap)})`;
+    return `<div class="stat-tile"><span class="stat-label">${esc(name)}</span><strong>${dec(s.xgFor)} / ${dec(s.xgAgainst)}</strong><span class="stat-sub">xG for / against per match · goals ${dec(s.goalsFor)} / ${dec(s.goalsAgainst)}${s.games !== null ? ` · ${s.games} matches` : ''}${esc(luck)}</span></div>`;
+  };
+  return `<h3>Expected goals</h3><div class="stat-tiles position-tiles">${side(names.home, xg.home)}${side(names.away, xg.away)}</div><p class="muted">Per-match averages in this competition this season (StrikerAPI${xg.stale ? ', saved copy' : ''}). xG is the quality of the chances created and allowed; a side scoring far above its xG for long is usually due a correction, but under about ten matches the gap is noise.</p>`;
+}
+
+/** Confirmed starting elevens, once named. */
+function lineupsBlock(l, names) {
+  if (!l) return '';
+  const side = (name, s) =>
+    `<div><h4>${esc(name)}${s.formation ? ` <span class="muted">${esc(s.formation)}</span>` : ''}</h4><ol class="lineup">${s.starters.map((p) => `<li>${p.number !== null ? `<span class="muted">${p.number}</span> ` : ''}${esc(p.name)}${p.position ? ` <small class="muted">${esc(p.position)}</small>` : ''}</li>`).join('')}</ol></div>`;
+  return `<h3>Confirmed line-ups</h3><div class="insight-grid">${side(names.home, l.home)}${side(names.away, l.away)}</div><p class="muted">Named about an hour before kickoff (StrikerAPI). Forecasts made earlier did not know them.</p>`;
+}
+
 function render(data) {
   const sections = [];
   const forecast = state.analysis ?? {};
   const names = {home: forecast.home, away: forecast.away};
+  sections.push(lineupsBlock(data.lineups, names));
   sections.push(positionBlock(data.leaguePosition, names));
+  sections.push(xgBlock(data.xg, names));
   if (data.stats) sections.push(statsBlock(data.stats, names), observedGoals(data.stats.goals));
   if (data.home && data.away)
     sections.push(
@@ -178,3 +212,5 @@ export async function loadInsights(matchKey, listing = state.listing) {
     if (state.analysis?.key === matchKey) box.innerHTML = '';
   }
 }
+export const xgBlockForTest = xgBlock;
+export const lineupsBlockForTest = lineupsBlock;
