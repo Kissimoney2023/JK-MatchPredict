@@ -32,6 +32,50 @@ const GOALS_SOURCE = {
     'From the older goal-average model’s expected goals with independent scoring. Not calibrated or backtested.',
 };
 
+const SCORES_SOURCE = {
+  market:
+    'Scorelines fitted to the bookmakers’ own three-way line and total (goal rates and a low-score correction solved to reproduce them), so they agree with the chances above.',
+  model:
+    'Scorelines from the JK goal model’s matrix over 90 minutes; the model tested a little worse than the bookmakers.',
+};
+
+/** Heat class for a grid cell: ten steps by probability, used by the stylesheet. */
+const heat = (p) => 'heat-' + Math.min(9, Math.floor(Math.max(0, p) / 2));
+
+/** Correct-score heatmap, most likely scores with fair odds, and Asian handicap lines. */
+function scoresBlock(f) {
+  const s = f.scores;
+  if (!s?.grid?.length) return '';
+  const header = s.grid[0].map((_, a) => `<th scope="col">${a}</th>`).join('');
+  const rows = s.grid
+    .map(
+      (row, h) =>
+        `<tr><th scope="row">${h}</th>${row.map((p) => `<td class="${heat(p)}">${p.toFixed(1)}</td>`).join('')}</tr>`,
+    )
+    .join('');
+  const top = s.top
+    .map(
+      (t) =>
+        `<li><strong>${t.home}–${t.away}</strong> ${t.p}% <small class="fair-odds">fair ${t.fairOdds.toFixed(2)}</small></li>`,
+    )
+    .join('');
+  const lines = s.handicaps
+    .filter((h) => Math.abs(h.line) <= 2.5)
+    .map(
+      (h) =>
+        `<tr class="${h.line === s.levelLine ? 'level' : ''}"><td>${h.line > 0 ? '+' : ''}${h.line}</td><td class="num">${h.home}% <small class="fair-odds">${h.fairHome?.toFixed(2) ?? '—'}</small></td><td class="num">${h.push ? h.push + '%' : '—'}</td><td class="num">${h.away}% <small class="fair-odds">${h.fairAway?.toFixed(2) ?? '—'}</small></td></tr>`,
+    )
+    .join('');
+  return `<h3>Correct score</h3>
+  <div class="scores-wrap">
+    <div class="table-scroll"><table class="score-grid" aria-label="Chance of each scoreline, home goals down, away goals across"><thead><tr><th scope="col">${esc(f.home.slice(0, 3))} \\ ${esc(f.away.slice(0, 3))}</th>${header}</tr></thead><tbody>${rows}</tbody></table></div>
+    <div><h4>Most likely scores</h4><ol class="top-scores">${top}</ol><p class="muted">Scores of 7 or more goals for a side: ${s.remainder}% in total.</p></div>
+  </div>
+  <h3>Asian handicap</h3>
+  <div class="table-scroll"><table class="handicap"><thead><tr><th>${esc(f.home)} line</th><th class="num">${esc(f.home)} covers · fair</th><th class="num">Push</th><th class="num">${esc(f.away)} covers · fair</th></tr></thead><tbody>${lines}</tbody></table></div>
+  <p class="muted">A line of −1.5 means ${esc(f.home)} must win by two or more. Whole lines can push (stake returned); their fair odds leave the push out. The highlighted line is the closest to even. ${esc(SCORES_SOURCE[f.scoresSource] ?? SCORES_SOURCE.model)} Fair odds carry no margin; not a recommendation to bet.</p>`;
+}
+
 /**
  * Over/Under in betting format: each line with the chance of over and under and the fair
  * decimal odds for each, plus pick buttons on the 2.5 line.
@@ -95,6 +139,7 @@ export function showAnalysis(f) {
     `<h3>Betting tips · probability-based</h3><div class="tips">${a.tips.map(tipCard).join('')}</div>` +
     `<p class="muted">${esc(a.disclaimer)}</p>` +
     goalsBlock(f, f.goals ?? a.goals) +
+    scoresBlock(f) +
     `<h3>Make a virtual pick</h3><div class="pick-buttons">${[0, 1, 2].map(pickButton(f)).join('')}</div>` +
     `<div id="save-message" role="status">${demoNote}</div>` +
     valueBlockHtml(f) +
@@ -105,3 +150,6 @@ export function showAnalysis(f) {
   if (!$('#analysis').open) $('#analysis').showModal();
   $('#analysis').scrollTop = 0; // opening another match from the list starts at its top
 }
+
+/** Exposed for the tests only. */
+export const scoresBlockForTest = scoresBlock;

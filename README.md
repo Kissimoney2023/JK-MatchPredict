@@ -11,6 +11,7 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - Double-chance tips derived from outcome probabilities.
 - **Betting view**: every probability also shown as fair decimal odds (1 ÷ chance, no margin), and an Over/Under ladder (0.5 to 3.5 goals, both teams to score) with fair odds for each side; see Over/Under.
 - **Over/Under 2.5 virtual picks** next to the home/draw/away ones, settled from the regulation-time total; see Over/Under.
+- **Correct score and Asian handicap**: a scoreline heatmap, the most likely scores with fair odds, and handicap lines (−2.5 to +2.5) with push chances, all consistent with the forecast shown; see Correct score and handicap.
 - **Value check**: type a bookmaker’s price next to any selection to see its implied chance, the expected value against the forecast and a quarter-Kelly stake; see Value check and slip calculator.
 - **Slip calculator**: tick pending picks to see the chance the whole accumulator wins, its fair combined odds and the expected value of a bookmaker’s combined price.
 - API-Football primary; football-data.org fallback where the competition and match can be verified.
@@ -245,6 +246,16 @@ The analysis shows an Over/Under ladder (0.5, 1.5, 2.5, 3.5 goals) and both team
 Otherwise the ladder says no estimate is available and Over/Under picks are refused for that match. Fair odds are 1 ÷ probability with no margin: a bookmaker price below them offers no value by that forecast; they are not a recommendation to bet.
 
 **Over/Under picks** live beside home/draw/away picks: one pick per match per market (the canonical key carries the market), removable until kickoff, settled from the regulation-time total (over wins when goals exceed the line; cancelled matches are void), and counted in the statistics on their own rows ("Over 2.5", "Under 2.5"). Signed-in accounts need the two columns added at the end of the `picks` table in `supabase/schema.sql`; re-run the file (it only adds what is missing). The site setup check reports a database that predates them, and the save itself says what to run.
+
+### Correct score and handicap
+
+The analysis shows a 7×7 scoreline grid (home goals down, away goals across), the six most likely scores with fair odds, and Asian handicap lines from the home side's view (−3 to +3 in halves; the page shows −2.5 to +2.5 and highlights the line closest to even money). Whole lines can push; their fair odds leave the push out ((1 − push) ÷ chance). All of it comes from one scoreline matrix (`server/scores.mjs`):
+
+- **Market-led forecasts** get a matrix fitted to the bookmakers' own numbers: the two goal rates share the expected total implied by the bookmakers' total line, their split is solved for the consensus home-win chance, and a Dixon-Coles low-score correction is solved for the draw chance. So the scores and handicaps reproduce the three-way line shown above them instead of contradicting it. Labelled "market".
+- **Model-led forecasts** use the ratings model's own matrix (also used when the two teams' histories are cached and the forecast came from elsewhere without a total line). Labelled "model".
+- Otherwise the section is absent.
+
+These are fair prices with no margin, not a recommendation to bet; they are not yet pickable markets.
 
 ### Backtesting
 

@@ -3,6 +3,7 @@ import {hash, HOUR} from '../util.mjs';
 import {probabilities, isOpen, sameMatch, goalModel, goalsFromTotalLine} from '../model.mjs';
 import {ratingsForecast} from '../ratings.mjs';
 import {analyze, goalMarkets} from '../analysis.mjs';
+import {matrixFromMarkets, scoreMarkets} from '../scores.mjs';
 
 // Which source leads when both are available. The bookmakers' consensus beat the app's own
 // model on 1,835 holdout matches and blending with it never beat it, so it leads by default;
@@ -96,10 +97,25 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
         kickoff: f.kickoff,
         now: now(),
       });
-      return m?.goals ?? null;
+      return m?.goals ? {goals: m.goals, scores: m.scores} : null;
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Correct-score and handicap markets. A market-led forecast gets a matrix fitted to the
+   * bookmakers' own numbers (their three-way line and total), so every market on the page
+   * agrees; a model-led one uses the model's matrix; otherwise cached histories, else none.
+   */
+  function withScores(record, market, cached) {
+    if (market?.total && String(record.modelVersion || '').startsWith('market')) {
+      const fit = matrixFromMarkets(record.p, market.total);
+      if (fit) return {...record, scores: scoreMarkets(fit.matrix), scoresSource: 'market'};
+    }
+    if (record.scores) return {...record, scoresSource: 'model'};
+    if (cached?.scores) return {...record, scores: cached.scores, scoresSource: 'model'};
+    return {...record, scores: null, scoresSource: null};
   }
 
   /**
@@ -108,15 +124,18 @@ export function createForecast({env, store, now, storage, provider, lookup, hist
    * expected goals, else none.
    */
   async function withGoals(record, f, teamIds, market) {
+    // Cached-history model, only when the forecast itself did not come from the model.
+    const cached = record.goals ? null : await cachedModelGoals(f, teamIds);
     const fromLine = goalsFromTotalLine(market?.total);
+    let out;
     if (fromLine)
-      return {...record, goals: fromLine, goalsSource: 'market-total', marketTotal: market.total};
-    if (record.goals) return {...record, goalsSource: 'model'};
-    const cached = await cachedModelGoals(f, teamIds);
-    if (cached) return {...record, goals: cached, goalsSource: 'model'};
-    if (record.expectedGoals)
-      return {...record, goals: goalMarkets(record.expectedGoals), goalsSource: 'model-legacy'};
-    return {...record, goals: null, goalsSource: null};
+      out = {...record, goals: fromLine, goalsSource: 'market-total', marketTotal: market.total};
+    else if (record.goals) out = {...record, goalsSource: 'model'};
+    else if (cached) out = {...record, goals: cached.goals, goalsSource: 'model'};
+    else if (record.expectedGoals)
+      out = {...record, goals: goalMarkets(record.expectedGoals), goalsSource: 'model-legacy'};
+    else out = {...record, goals: null, goalsSource: null};
+    return withScores(out, market, cached);
   }
 
   async function forecast(key, listingId) {

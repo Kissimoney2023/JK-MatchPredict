@@ -1,4 +1,7 @@
 import {fdRegulation} from './model.mjs';
+import {dixonColesTau, poissonRow, clampRho, scoreMarkets} from './scores.mjs';
+
+export {dixonColesTau};
 
 const DAY = 86_400_000;
 
@@ -22,18 +25,6 @@ export const DEFAULTS = {
   // backtest chooses this correction.
   goalScale: 1,
 };
-
-/**
- * Dixon-Coles weight for a low scoreline given the two goal rates. 1 for every other score.
- */
-export function dixonColesTau(h, a, lh, la, rho) {
-  if (!rho) return 1;
-  if (h === 0 && a === 0) return 1 - lh * la * rho;
-  if (h === 1 && a === 0) return 1 + la * rho;
-  if (h === 0 && a === 1) return 1 + lh * rho;
-  if (h === 1 && a === 1) return 1 - rho;
-  return 1;
-}
 
 const GOAL_LINES = [0.5, 1.5, 2.5, 3.5];
 const pct1 = (x) => Math.round(x * 1000) / 10;
@@ -174,12 +165,6 @@ export function fitRatings(results, now, options = {}) {
   return {mu, home, index, attack, defence, count, matches: rows.length, teams: n};
 }
 
-const poissonRow = (lambda, maxGoals) => {
-  const p = [Math.exp(-lambda)];
-  for (let i = 1; i <= maxGoals; i++) p[i] = (p[i - 1] * lambda) / i;
-  return p;
-};
-
 /** Win/draw/lose probabilities (percent, summing to exactly 100) and expected goals. */
 export function predictMatch(ratings, homeId, awayId, options = {}) {
   const {minLambda, maxLambda, maxGoals, goalScale} = {...DEFAULTS, ...options};
@@ -193,11 +178,11 @@ export function predictMatch(ratings, homeId, awayId, options = {}) {
   const la = clamp(goalScale * Math.exp(ratings.mu + ratings.attack[ai] - ratings.defence[hi]));
   const hp = poissonRow(lh, maxGoals);
   const ap = poissonRow(la, maxGoals);
-  // Keep rho inside the range where every scoreline stays a valid probability.
-  const rho = Math.max(-1 / lh, -1 / la, Math.min(options.rho ?? DEFAULTS.rho, 1 / (lh * la), 1));
+  const rho = clampRho(options.rho ?? DEFAULTS.rho, lh, la);
   const matrix = hp.map((ph, i) => ap.map((pa, j) => ph * pa * dixonColesTau(i, j, lh, la, rho)));
   return {
     ...marketsFromMatrix(matrix),
+    scores: scoreMarkets(matrix),
     expectedGoals: [Math.round(lh * 100) / 100, Math.round(la * 100) / 100],
   };
 }
