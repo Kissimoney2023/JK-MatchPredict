@@ -73,9 +73,12 @@ export function createFixtures({env, store, provider, league, strikerApi}) {
             Date.parse(f.kickoff) < Date.parse(to) + DAY,
         );
       if (data.stale) errors.push(staleNote(data.at));
-      errors.push(
-        'Fallback data may be delayed. Forecasts use an experimental model, subject to sufficient match history.',
-      );
+      // The forecast note only matters when there are matches to forecast; an empty answer
+      // is explained by the page itself (competition, dates, source).
+      if (items.length)
+        errors.push(
+          'Fallback data may be delayed. Forecasts use an experimental model, subject to sufficient match history.',
+        );
       return await fixtureResult(items, data, 'football-data.org', errors);
     }
 

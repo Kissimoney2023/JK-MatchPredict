@@ -74,5 +74,38 @@ test('loading, not connected and nothing loaded keep their own messages', () => 
   setState({connected: false, fixtures: []});
   assert.match(emptyState(), /Your matchday starts here/);
   setState({fixtures: [], status: 'live'});
-  assert.match(emptyState(), /No matches in this view/);
+  assert.match(emptyState(), /No matches/);
+});
+
+test('after an empty answer the page names the competition, dates and source instead of loading forever', () => {
+  setState({
+    busy: true, // the list is drawn before the busy flag clears
+    fixtures: [],
+    status: 'upcoming',
+    league: 'ap:4',
+    leagues: [{key: 'ap:4', name: 'European Championship', type: 'CUP'}],
+    source: 'football-data.org',
+    at: Date.now(),
+    range: {from: '2026-10-23', to: '2026-11-21'},
+  });
+  const html = emptyState();
+  assert.ok(!html.includes('Loading'), 'not stuck on loading');
+  assert.match(html, /No European Championship matches between 2026-10-23 and 2026-11-21/);
+  assert.match(html, /according to football-data\.org/);
+  assert.match(html, /Tournaments only have fixtures/);
+
+  setState({busy: true, fixtures: [], at: null});
+  assert.match(emptyState(), /Loading matches/, 'still loading while no answer is in');
+
+  setState({
+    fixtures: [],
+    league: 'all',
+    leagues: [],
+    source: 'API-Football',
+    range: {from: '2026-10-23', to: '2026-10-23'},
+    at: 1,
+  });
+  const day = emptyState();
+  assert.match(day, /No matches on 2026-10-23/);
+  assert.match(day, /Try other dates or another competition/);
 });

@@ -46,7 +46,9 @@ async function loadMatches() {
   state.listing = data.listingId;
   state.source = data.source;
   state.at = data.fetchedAt;
-  notice(data.warnings, {loaded: data.fixtures.length > 0, source: data.source});
+  state.range = {from, to};
+  // The answer is in: provider notes stay quiet; an empty list explains itself on the page.
+  notice(data.warnings, {loaded: true, count: data.fixtures.length, source: data.source});
   renderMatches();
 }
 

@@ -58,3 +58,13 @@ test('provider text and the source name are escaped', () => {
     assert.ok(!box.innerHTML.includes('<script>'));
   });
 });
+
+test('with an answer of zero matches the note is quiet and says so', () => {
+  withPage((box) => {
+    notice([PLAN], {loaded: true, source: 'football-data.org', count: 0});
+    assert.match(box.innerHTML, /^<details class="notice">/);
+    assert.match(box.innerHTML, /No matches came back from football-data\.org\./);
+    notice([PLAN], {loaded: true, source: 'football-data.org', count: 12});
+    assert.match(box.innerHTML, /Showing matches from football-data\.org\./);
+  });
+});

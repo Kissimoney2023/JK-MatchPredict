@@ -61,7 +61,9 @@ export function statusCounts() {
 
 export function emptyState() {
   const ready = state.connected || state.demo;
-  if (state.busy) return '<div class="empty"><strong>Loading matches…</strong>One moment.</div>';
+  // Loading only until the answer is in: the list is drawn before the busy flag clears.
+  if (state.busy && !state.at)
+    return '<div class="empty"><strong>Loading matches…</strong>One moment.</div>';
   if (!ready)
     return '<div class="empty"><strong>Your matchday starts here</strong>Add your API keys in Vercel, or preview the sample matches above.</div>';
 
@@ -85,7 +87,19 @@ export function emptyState() {
       : '';
     return `<div class="empty"><strong>${title}</strong>${more}${offers}</div>`;
   }
-  return '<div class="empty"><strong>No matches in this view</strong>Try a different date or competition.</div>';
+  // The answer came back empty: say for what, and where it was looked up.
+  const competition = state.leagues.find((l) => l.key === state.league)?.name;
+  const range = state.range?.from
+    ? state.range.to && state.range.to !== state.range.from
+      ? ` between ${esc(state.range.from)} and ${esc(state.range.to)}`
+      : ` on ${esc(state.range.from)}`
+    : '';
+  const where = state.source ? ` by ${esc(state.source)}` : '';
+  const tournament = state.leagues.find((l) => l.key === state.league)?.type === 'CUP';
+  const hint = tournament
+    ? 'Tournaments only have fixtures around their finals and knockout rounds; try dates when it is being played, or another competition.'
+    : 'Try other dates or another competition.';
+  return `<div class="empty"><strong>No ${competition ? esc(competition) + ' ' : ''}matches${range}</strong>Nothing listed${where} for those dates. ${hint}</div>`;
 }
 
 export function renderMatches() {

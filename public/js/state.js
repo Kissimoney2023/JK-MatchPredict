@@ -17,6 +17,7 @@ export const state = {
   account: null,
   source: '',
   at: null,
+  range: null, // the dates of the last match list request
   listing: null,
   analysis: null,
   demo: false,

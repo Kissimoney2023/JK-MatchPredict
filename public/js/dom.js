@@ -31,11 +31,19 @@ export function message(text, target = '#feedback') {
  * only background, so it is a quiet one-liner with the details a click away; when nothing
  * loaded it stays a visible warning, because it explains why.
  */
-export function notice(warnings, {loaded = false, source = ''} = {}, target = '#feedback') {
+export function notice(
+  warnings,
+  {loaded = false, source = '', count = null} = {},
+  target = '#feedback',
+) {
   const text = (warnings || []).join(' ').trim();
   if (!text) return message('', target);
   if (!loaded) return message(text, target);
-  const lead = source ? `Showing matches from ${esc(source)}.` : 'A note about the data source.';
+  const lead = !source
+    ? 'A note about the data source.'
+    : count === 0
+      ? `No matches came back from ${esc(source)}.`
+      : `Showing matches from ${esc(source)}.`;
   $(target).innerHTML =
     `<details class="notice"><summary>${lead} <span class="notice-more">Details</span></summary><p>${esc(text)}</p></details>`;
 }
