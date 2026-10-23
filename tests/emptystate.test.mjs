@@ -91,7 +91,7 @@ test('after an empty answer the page names the competition, dates and source ins
   const html = emptyState();
   assert.ok(!html.includes('Loading'), 'not stuck on loading');
   assert.match(html, /No European Championship matches between 2026-10-23 and 2026-11-21/);
-  assert.match(html, /according to football-data\.org/);
+  assert.match(html, /Nothing listed by football-data\.org for those dates/);
   assert.match(html, /Tournaments only have fixtures/);
 
   setState({busy: true, fixtures: [], at: null});
