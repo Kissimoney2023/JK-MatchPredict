@@ -98,3 +98,61 @@ export function goalMarkets([home, away]) {
  */
 export const fairOdds = (percent) =>
   Number.isFinite(percent) && percent > 0 ? Math.round((100 / percent) * 100) / 100 : null;
+
+const TIERS = [
+  {min: 85, label: 'very likely'},
+  {min: 70, label: 'likely'},
+  {min: 55, label: 'lean'},
+  {min: 0, label: 'toss-up'},
+];
+export const tierOf = (percent) => TIERS.find((t) => percent >= t.min).label;
+
+/**
+ * Every selection the forecast prices, ranked by chance: the three results, double chance,
+ * draw no bet (from the level handicap line when scores are available), Over/Under lines
+ * and both teams to score. Each carries its chance (percent), fair odds and a tier. A short
+ * list of what is most likely in the match, not a list of bets: the surer the selection, the
+ * shorter its price, and a slip still multiplies the misses.
+ */
+export function likelySelections(f, {limit = 8} = {}) {
+  if (!Array.isArray(f?.p) || f.p.length !== 3) return [];
+  const [h, d, a] = f.p;
+  const items = [
+    {market: 'Result', selection: `${f.home} win`, p: h},
+    {market: 'Result', selection: 'Draw', p: d},
+    {market: 'Result', selection: `${f.away} win`, p: a},
+    {market: 'Double chance', selection: `${f.home} or draw (1X)`, p: h + d},
+    {market: 'Double chance', selection: `Draw or ${f.away} (X2)`, p: d + a},
+    {market: 'Double chance', selection: 'Either team wins (12)', p: h + a},
+  ];
+  const level = f.scores?.handicaps?.find((x) => x.line === 0);
+  if (level && level.push < 100) {
+    const live = 100 - level.push;
+    items.push({
+      market: 'Draw no bet',
+      selection: `${f.home} (stake back on a draw)`,
+      p: (level.home / live) * 100,
+    });
+    items.push({
+      market: 'Draw no bet',
+      selection: `${f.away} (stake back on a draw)`,
+      p: (level.away / live) * 100,
+    });
+  }
+  for (const l of f.goals?.lines ?? []) {
+    items.push({market: 'Goals', selection: `Over ${l.line}`, p: l.over});
+    items.push({market: 'Goals', selection: `Under ${l.line}`, p: l.under});
+  }
+  if (Number.isFinite(f.goals?.btts)) {
+    items.push({market: 'Both teams score', selection: 'Yes', p: f.goals.btts});
+    items.push({market: 'Both teams score', selection: 'No', p: 100 - f.goals.btts});
+  }
+  return items
+    .filter((x) => Number.isFinite(x.p) && x.p > 0 && x.p < 100)
+    .map((x) => {
+      const p = Math.round(x.p * 10) / 10;
+      return {...x, p, fairOdds: fairOdds(p), tier: tierOf(p)};
+    })
+    .sort((x, y) => y.p - x.p)
+    .slice(0, limit);
+}

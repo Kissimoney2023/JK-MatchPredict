@@ -1,4 +1,4 @@
-import {analyze, fairOdds} from '/analysis.js';
+import {analyze, fairOdds, likelySelections} from '/analysis.js';
 import {$, esc, formatDate} from '../dom.js';
 import {state} from '../state.js';
 import {otherMatches, otherMatchesTitle} from '../othermatches.js';
@@ -22,6 +22,19 @@ const pickButton = (f) => (n) =>
   `<button class="secondary" data-save="${n}" ${f.demo ? 'disabled' : ''}>${esc(outcomeLabels(f)[n])}</button>`;
 
 const PICK_LINE = 2.5; // the Over/Under line people can make a virtual pick on
+
+/** What is most likely in this match, across every market priced, with fair odds and tiers. */
+function likelyBlock(f) {
+  const rows = likelySelections(f);
+  if (!rows.length) return '';
+  const list = rows
+    .map(
+      (r) =>
+        `<li class="likely tier-${r.tier.replace(/\s/g, '-')}"><span class="likely-tier">${esc(r.tier)}</span><span class="likely-what"><strong>${esc(r.selection)}</strong><small class="muted">${esc(r.market)}</small></span><span class="likely-p">${r.p}%</span><span class="likely-odds">fair ${r.fairOdds?.toFixed(2) ?? '—'}</span></li>`,
+    )
+    .join('');
+  return `<h3>Most likely in this match</h3><ol class="likely-list">${list}</ol><p class="muted">Every selection the forecast prices, surest first. A surer selection has a shorter price; nothing here is certain, and a slip multiplies its legs’ chances of missing. Draw no bet and double chance survive a draw, which straight win picks do not.</p>`;
+}
 
 const GOALS_SOURCE = {
   'market-total':
@@ -136,6 +149,7 @@ export function showAnalysis(f) {
     `<p class="muted">${esc(f.competition)} · ${esc(formatDate(f.kickoff))}</p>` +
     `<div class="prediction"><div class="eyebrow">PREDICTED OUTCOME</div><h3>${esc(a.predictedOutcome)}</h3><span class="number">${a.probability}%</span><p>${esc(a.strength)} · ${a.margin} percentage-point lead over the next outcome.<br>${esc(a.verdict)}</p></div>` +
     `<div class="probabilities">${f.p.map(probabilityBar(f)).join('')}</div>` +
+    likelyBlock(f) +
     `<h3>Betting tips · probability-based</h3><div class="tips">${a.tips.map(tipCard).join('')}</div>` +
     `<p class="muted">${esc(a.disclaimer)}</p>` +
     goalsBlock(f, f.goals ?? a.goals) +
@@ -153,3 +167,4 @@ export function showAnalysis(f) {
 
 /** Exposed for the tests only. */
 export const scoresBlockForTest = scoresBlock;
+export const likelyBlockForTest = likelyBlock;

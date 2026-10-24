@@ -9,6 +9,7 @@ A deployable football match explorer, probability dashboard, prediction/tips vie
 - Every match returned in that range, with team search, match-status filters and 20-card client-side pagination. There is no fixed 12-match cap.
 - Pre-match home/draw/away probabilities, favored outcome (including draws), and a clear recommendation to skip closely matched games.
 - Double-chance tips derived from outcome probabilities.
+- **Most likely in this match**: every selection the forecast prices (results, double chance, draw no bet, Over/Under, both teams to score) ranked by chance with fair odds and plain tiers (very likely, likely, lean, toss-up).
 - **Betting view**: every probability also shown as fair decimal odds (1 ÷ chance, no margin), and an Over/Under ladder (0.5 to 3.5 goals, both teams to score) with fair odds for each side; see Over/Under.
 - **Over/Under 2.5 virtual picks** next to the home/draw/away ones, settled from the regulation-time total; see Over/Under.
 - **Correct score and Asian handicap**: a scoreline heatmap, the most likely scores with fair odds, and handicap lines (−2.5 to +2.5) with push chances, all consistent with the forecast shown; see Correct score and handicap.
@@ -57,7 +58,7 @@ API_FOOTBALL_DAILY_LIMIT=100
 - `POTD_COMPETITIONS`: competitions considered for the pick of the day (see Picks of the day).
 - `FORECAST_PRIMARY`: `market` (default) or `api-football`, which source leads when both are available (see Predictions and tips).
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, optional `VAPID_SUBJECT`: kickoff reminders (see Kickoff reminders).
-- `STRIKERAPI_API_KEY`: optional StrikerAPI key (see StrikerAPI above). `STRIKERAPI_MONTHLY_CREDITS`: credit cap, default 450. `STRIKERAPI_MARKET_FORECASTS`: `off` disables market-based forecasts.
+- `STRIKERAPI_API_KEY`: optional StrikerAPI key (see StrikerAPI above). `STRIKERAPI_MONTHLY_CREDITS`: credit cap, default 450. `STRIKERAPI_MARKET_FORECASTS`: `off` disables market-based forecasts. `STRIKERAPI_FRESH_LINES`: `off` stops the near-kickoff line refresh.
 - `CRON_SECRET`: secret for `/api/prefetch` (see Scheduled prefetch). `PREFETCH_COMPETITIONS`: optional competition codes to warm, default `CL`.
 - `API_FOOTBALL_DAILY_LIMIT`: optional daily application budget; default 100. Change it only to match your allowance. Other apps using the same key can consume the provider's quota independently.
 
@@ -224,6 +225,7 @@ Needs the `shares` table: re-run [`supabase/schema.sql`](supabase/schema.sql) on
 
 Set `STRIKERAPI_API_KEY` (free key: 500 credits a month at https://strikerapi.com/signup) to add:
 
+- **Fresh lines near kickoff.** The schedule is cached for 12 hours, but lines move with team news and the closing line is the most accurate number available, so a forecast opened within three hours of kickoff uses a schedule copy at most two hours old (one extra 2-credit call per league per two hours on a matchday). `STRIKERAPI_FRESH_LINES=off` keeps the 12-hour cache. Forecast records are still frozen per hour, so a pick keeps the line it was made on.
 - **Market consensus forecasts.** The Champions League (and other covered leagues) schedule carries the median three-way line across sportsbooks. The app removes the bookmaker margin (Shin's method) and uses the result as the forecast ahead of API-Football's prediction (it beat the app's model in the backtest). It needs no team histories, so it also avoids football-data.org rate limits. These are bookmaker prices, not an independent model, and the app labels them that way (source "StrikerAPI · market consensus"); they carry no edge. Set `STRIKERAPI_MARKET_FORECASTS=off` to disable this and keep the history-based models.
 - **All-time head-to-head** in the competition, **competition Elo ratings** and a **market view** for comparison in the forecast dialog. Elo ratings only move on that competition's matches, so Champions League ratings are thin and not comparable across leagues; the dialog says so.
 - **Standings fallback** when football-data.org cannot provide them.
@@ -257,6 +259,8 @@ Free provider plans allow only a handful of requests per minute, and one forecas
 - Manual run: `curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.vercel.app/api/prefetch` returns a summary of what was warmed.
 
 ## Predictions and tips
+
+**What "accurate" can mean here.** No forecast makes football results predictable: the bookmakers' consensus, the best public predictor, sees its favourite lose about 45% of the time. The app therefore works on two things it can control: showing a probability as close as possible to the best available number (the consensus, refreshed near kickoff; the models only where there is no line), and making the probabilities easy to use well (fair odds, the "most likely" ladder with double chance and draw no bet, the value check, the slip calculator). The live forecast record measures how the shown probabilities actually perform.
 
 **Order of sources.** When StrikerAPI is configured and has a line for the match, the bookmakers' consensus (median three-way line across sportsbooks, margin removed with Shin's method) is the forecast: in the backtest below it beat the app's own model on 1,835 holdout matches and no blend of the two beat it. Otherwise API-Football's prediction is used, then the `jk-ratings-v2` model, then `jk-poisson-v1`. `FORECAST_PRIMARY=api-football` puts API-Football's prediction ahead of the market again. The source is always credited on the forecast.
 

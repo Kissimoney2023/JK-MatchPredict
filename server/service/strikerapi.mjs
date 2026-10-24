@@ -19,7 +19,9 @@ const TTL = {
   teamStats: 7 * DAY, // per-match averages move slowly; 5 credits per league per week
   lineups: 10 * 60_000, // short: an answer before the teams are named must not stick
   games: 2 * HOUR, // results of a competition over a date range
+  freshLines: 2 * HOUR, // the schedule when a match is close to kickoff
 };
+const FRESH_LINES_WINDOW_MS = 3 * HOUR;
 const GAMES_LIMIT = 200;
 
 const num = (v) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null);
@@ -182,7 +184,15 @@ export function createStrikerApi({env, provider, now = Date.now}) {
     optional(async () => {
       const league = saLeagueFor(fixture.fdCode);
       if (!marketEnabled() || !league) return null;
-      const r = await schedule(league);
+      // Near kickoff the line moves with team news and the closing line is the most accurate
+      // number there is, so a forecast opened within three hours uses a copy at most two
+      // hours old (2 credits per league per refresh). STRIKERAPI_FRESH_LINES=off keeps 12h.
+      const untilKickoff = Date.parse(fixture.kickoff) - now();
+      const fresh =
+        !off(env.STRIKERAPI_FRESH_LINES) &&
+        untilKickoff > -30 * 60_000 &&
+        untilKickoff <= FRESH_LINES_WINDOW_MS;
+      const r = await schedule(league, fresh ? TTL.freshLines : TTL.schedule);
       const game = findGame(r.body.games ?? [], fixture);
       if (!game) {
         // Diagnostic for the logs: what the schedule offered around that kickoff.

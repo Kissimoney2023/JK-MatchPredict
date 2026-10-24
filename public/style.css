@@ -1997,3 +1997,69 @@ progress::-moz-progress-bar {
 .lineup li {
   margin: 2px 0;
 }
+
+/* ---------- Most likely in this match ---------- */
+.likely-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  counter-reset: likely;
+}
+.likely {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr) 64px 84px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.likely-tier {
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-align: center;
+  font: 600 11px var(--font-mono);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.tier-very-likely .likely-tier {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.tier-likely .likely-tier {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tier-lean .likely-tier {
+  background: rgb(251 191 36 / 0.14);
+  color: #fbbf24;
+}
+.likely-what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.likely-what strong {
+  overflow-wrap: anywhere;
+}
+.likely-p,
+.likely-odds {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+.likely-odds {
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .likely {
+    grid-template-columns: 76px minmax(0, 1fr) 56px;
+  }
+  .likely-odds {
+    grid-column: 2 / -1;
+    text-align: left;
+  }
+}
