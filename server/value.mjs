@@ -76,6 +76,20 @@ export function valueCheck(probabilityPercent, odds, {bankroll = DEFAULT_BANKROL
 }
 
 /**
+ * A combination slip's price from its leg prices (typed, so any format parseOdds reads): the
+ * product, with an optional boost in percent applied to the winnings the way a "CombiBoost"
+ * is. Null unless every leg has a usable price.
+ */
+export function combinedPrice(legOdds, boostPercent = 0) {
+  const legs = (Array.isArray(legOdds) ? legOdds : []).map(parseOdds);
+  if (!legs.length || legs.some((o) => !o)) return null;
+  const product = legs.reduce((acc, o) => acc * o, 1);
+  const boost = Number(boostPercent);
+  const winnings = (product - 1) * (1 + (Number.isFinite(boost) && boost > 0 ? boost / 100 : 0));
+  return round(1 + winnings, 2);
+}
+
+/**
  * An accumulator of independent selections: the chance every leg wins, the fair price for the
  * whole slip, "one in N", and (with the bookmaker's combined price) the expected value.
  * Probabilities in percent. Legs without a usable chance are left out and counted.

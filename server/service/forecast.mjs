@@ -128,7 +128,12 @@ export function createForecast({
   function withScores(record, market, cached) {
     if (market?.total && String(record.modelVersion || '').startsWith('market')) {
       const fit = matrixFromMarkets(record.p, market.total);
-      if (fit) return {...record, scores: scoreMarkets(fit.matrix), scoresSource: 'market'};
+      if (fit)
+        return {
+          ...record,
+          scores: scoreMarkets(fit.matrix, {rates: fit.rates, rho: fit.rho}),
+          scoresSource: 'market',
+        };
     }
     if (record.scores) return {...record, scoresSource: 'model'};
     if (cached?.scores) return {...record, scores: cached.scores, scoresSource: 'model'};

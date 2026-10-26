@@ -13,6 +13,7 @@ await cp('server/pickstats.mjs', 'dist/pickstats.js');
 await cp('server/value.mjs', 'dist/value.js');
 await cp('server/calibration.mjs', 'dist/calibration.js');
 await cp('server/trend.mjs', 'dist/trend.js');
+await cp('server/scores.mjs', 'dist/scores.js');
 
 // Self-hosted fonts keep the CSP strict (no third-party font hosts).
 const FONTS = [
@@ -84,6 +85,7 @@ for (const file of [
   'trend.js',
   'value.js',
   'calibration.js',
+  'scores.js',
   'js/main.js',
   'sw.js',
   'manifest.webmanifest',

@@ -2063,3 +2063,148 @@ progress::-moz-progress-bar {
     text-align: left;
   }
 }
+
+/* ---------- Betting slip view (the markets as a slip lists them) ---------- */
+.books {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.book {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  overflow: hidden;
+}
+.book-scores {
+  grid-column: 1 / -1;
+}
+.book h4 {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.book-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.book-table th {
+  width: 48px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font: 500 12px var(--font-mono);
+  text-align: left;
+}
+.book-table td {
+  padding: 2px;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+.book-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 2px;
+  padding: 2px;
+}
+.book-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  line-height: 1.25;
+  text-align: left;
+}
+button.book-cell {
+  cursor: pointer;
+}
+button.book-cell:hover {
+  background: var(--surface-2);
+}
+button.book-cell[aria-pressed='true'] {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.book-cell .book-label {
+  font-size: 13px;
+  color: var(--fg-soft);
+}
+.book-cell strong {
+  font-family: var(--font-mono);
+  font-size: 15px;
+}
+.book-cell small {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.combo {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.combo h4 {
+  margin: 0 0 var(--space-2);
+}
+.combo-legs {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-4);
+}
+
+/* ---------- Slip legs with prices ---------- */
+.slip-leg {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 0;
+}
+.slip-leg-what {
+  overflow-wrap: anywhere;
+}
+.slip-leg input {
+  width: 100%;
+  font-family: var(--font-mono);
+}
+.slip-legs {
+  list-style: none;
+  padding-left: 0;
+}
+.slip-prices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+.slip-warning {
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid #fbbf24;
+  background: rgb(251 191 36 / 0.1);
+}
+@media (max-width: 640px) {
+  .books {
+    grid-template-columns: 1fr;
+  }
+  .slip-leg {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+  .slip-leg input {
+    grid-column: 2;
+  }
+  .slip-prices {
+    grid-template-columns: 1fr;
+  }
+}

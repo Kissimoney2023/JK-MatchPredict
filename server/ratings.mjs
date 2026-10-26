@@ -182,7 +182,10 @@ export function predictMatch(ratings, homeId, awayId, options = {}) {
   const matrix = hp.map((ph, i) => ap.map((pa, j) => ph * pa * dixonColesTau(i, j, lh, la, rho)));
   return {
     ...marketsFromMatrix(matrix),
-    scores: scoreMarkets(matrix),
+    scores: scoreMarkets(matrix, {
+      rates: [Math.round(lh * 100) / 100, Math.round(la * 100) / 100],
+      rho: Math.round(rho * 1000) / 1000,
+    }),
     expectedGoals: [Math.round(lh * 100) / 100, Math.round(la * 100) / 100],
   };
 }

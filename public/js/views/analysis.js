@@ -3,6 +3,7 @@ import {$, esc, formatDate} from '../dom.js';
 import {state} from '../state.js';
 import {otherMatches, otherMatchesTitle} from '../othermatches.js';
 import {initValueCheck, valueBlockHtml} from './value.js';
+import {initMarkets, marketsBlock} from './markets.js';
 
 const outcomeLabels = (f) => [f.home, 'Draw', f.away];
 
@@ -154,6 +155,7 @@ export function showAnalysis(f) {
     `<p class="muted">${esc(a.disclaimer)}</p>` +
     goalsBlock(f, f.goals ?? a.goals) +
     scoresBlock(f) +
+    marketsBlock(f) +
     `<h3>Make a virtual pick</h3><div class="pick-buttons">${[0, 1, 2].map(pickButton(f)).join('')}</div>` +
     `<div id="save-message" role="status">${demoNote}</div>` +
     valueBlockHtml(f) +
@@ -161,6 +163,7 @@ export function showAnalysis(f) {
     '<div id="insights"></div>' +
     sourceBlock(f);
   initValueCheck(f);
+  initMarkets(f);
   if (!$('#analysis').open) $('#analysis').showModal();
   $('#analysis').scrollTop = 0; // opening another match from the list starts at its top
 }
