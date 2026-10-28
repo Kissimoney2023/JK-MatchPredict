@@ -151,6 +151,35 @@ const savePick = (selection) =>
     await loadPicks();
   }, '#save-message');
 
+/** Saves the selections chosen on the betting slip view, each as its own pick under one slip label. */
+const saveSlipPicks = ({legs, slip}) =>
+  run(async () => {
+    let saved = 0;
+    let already = 0;
+    for (const leg of legs) {
+      const result = await api(
+        'save',
+        {},
+        {
+          action: 'save',
+          forecastId: state.analysis.forecastId,
+          market: 'selection',
+          outcome: 0,
+          selection: leg.selection,
+          price: leg.price,
+          slip,
+        },
+      );
+      if (result.saved) saved++;
+      else already++;
+    }
+    message(
+      `${saved} pick${saved === 1 ? '' : 's'} saved${slip ? ' under “' + slip + '”' : ''}${already ? `; ${already} already saved` : ''}. They settle from the final and half-time scores; see My picks.`,
+      '#combo-message',
+    );
+    await loadPicks();
+  }, '#combo-message');
+
 const settlePicks = () =>
   run(async () => {
     const d = await api('settle', {}, {action: 'settle'});
@@ -226,6 +255,7 @@ $('#standings-box').addEventListener('toggle', (e) => {
 $('#settle').onclick = settlePicks;
 $('#export').onclick = exportPicks;
 document.addEventListener('click', onButtonClick);
+document.addEventListener('jk:save-picks', (e) => saveSlipPicks(e.detail));
 
 initAccountUi();
 initReminders();

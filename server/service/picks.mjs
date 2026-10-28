@@ -1,6 +1,10 @@
 import {AppError} from '../errors.mjs';
 import {hash, HOUR} from '../util.mjs';
 import {isOpen, settleSelection, sameMatch, matchKey, GOAL_LINES} from '../model.mjs';
+import {bettingMarkets, isPickableSelection} from '../scores.mjs';
+import {parseOdds} from '../value.mjs';
+
+const SLIP_LABEL_MAX = 40;
 
 const FORECAST_MAX_AGE = 2 * HOUR;
 const SETTLE_DELAY = 105 * 60_000;
@@ -18,25 +22,56 @@ export function createPicks({now, storage, lookup, pickStore, clv}) {
   };
 
   /**
-   * Saves a virtual pick on a forecast. `market` 'result' (outcome 0/1/2 = home, draw, away)
-   * or 'totals' (outcome 0 = over `line` goals, 1 = under). One pick per match per market.
+   * Saves a virtual pick on a forecast. `market` 'result' (outcome 0/1/2 = home, draw, away),
+   * 'totals' (outcome 0 = over `line` goals, 1 = under) or 'selection' (`extra.selection` is
+   * a betting-slip cell id; the forecast's chance for it is recorded with the pick). Any pick
+   * may carry the price it was placed at and the label of the slip it belongs to. One pick
+   * per match per market (per selection for selections).
    */
-  async function save(sid, id, outcome, market = 'result', line) {
+  async function save(sid, id, outcome, market = 'result', line, extra = {}) {
     const totals = market === 'totals';
-    if (!totals && market !== 'result') throw new AppError(400, 'pick', 'Unknown market.');
+    const selection = market === 'selection';
+    if (!totals && !selection && market !== 'result')
+      throw new AppError(400, 'pick', 'Unknown market.');
     const lineValue = totals ? Number(line) : undefined;
+    const selectionId = selection ? String(extra?.selection ?? '') : undefined;
+    if (selection && !isPickableSelection(selectionId))
+      throw new AppError(
+        400,
+        'pick',
+        'That selection cannot be settled from a score, so it cannot be picked.',
+      );
+    const outcomeValue = selection ? 0 : outcome;
     if (
       !/^[a-f0-9]{64}$/.test(id) ||
-      ![0, 1, 2].includes(outcome) ||
+      ![0, 1, 2].includes(outcomeValue) ||
       (totals && (outcome > 1 || !GOAL_LINES.includes(lineValue)))
     )
       throw new AppError(400, 'pick', 'Invalid pick.');
+    const priceText = String(extra?.price ?? '').trim();
+    const price = priceText ? parseOdds(priceText) : null;
+    if (priceText && !price)
+      throw new AppError(400, 'price', 'That price could not be read; use decimal odds like 1.85.');
+    const slip = String(extra?.slip ?? '')
+      .trim()
+      .slice(0, SLIP_LABEL_MAX);
     const f = await read('forecast/' + id);
     if (totals && !f?.goals?.lines?.some((l) => Number(l.line) === lineValue))
       throw new AppError(
         409,
         'no_goals',
         'This forecast has no Over/Under estimate for that line.',
+      );
+    const cell = selection
+      ? bettingMarkets(f)
+          .flatMap((g) => g.rows.flatMap((r) => r.cells))
+          .find((c) => c.id === selectionId)
+      : null;
+    if (selection && !cell)
+      throw new AppError(
+        409,
+        'no_market',
+        'This forecast does not price that selection; refresh it.',
       );
     if (!f || !isOpen(f, now()) || now() - f.forecastAt > FORECAST_MAX_AGE)
       throw new AppError(
@@ -49,12 +84,16 @@ export function createPicks({now, storage, lookup, pickStore, clv}) {
       throw new AppError(409, 'closed', 'This match changed or is no longer open.');
     if (!isOpen(f, now())) throw new AppError(409, 'closed', 'Kickoff has passed.');
 
-    const canonical = matchKey(f) + (totals ? `|totals:${lineValue}` : '');
+    const canonical =
+      matchKey(f) + (totals ? `|totals:${lineValue}` : selection ? `|sel:${selectionId}` : '');
     const pick = {
       id: hash(canonical),
       canonical,
       ...(totals ? {market: 'totals', line: lineValue} : {}),
-      outcome,
+      ...(selection ? {market: 'selection', selection: selectionId, probability: cell.p} : {}),
+      ...(price ? {price} : {}),
+      ...(slip ? {slip} : {}),
+      outcome: outcomeValue,
       createdAt: now(),
       forecast: f,
       result: null,

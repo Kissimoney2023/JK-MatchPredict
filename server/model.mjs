@@ -1,3 +1,5 @@
+import {selectionOutcome} from './scores.mjs';
+
 export function probabilities(percent) {
   const vals = ['home', 'draw', 'away'].map((k) => {
     const v = percent?.[k];
@@ -32,18 +34,34 @@ export function finalScore(raw) {
   return {home: score.home, away: score.away};
 }
 
+/** The half-time score when the provider gives one, else null. */
+export function halfTimeScore(raw) {
+  const s = raw?.score?.halftime;
+  return Number.isInteger(s?.home) && Number.isInteger(s?.away) && s.home >= 0 && s.away >= 0
+    ? {home: s.home, away: s.away}
+    : null;
+}
+
 export const GOAL_LINES = [0.5, 1.5, 2.5, 3.5];
 
 /**
  * Settles one selection against the final score. Markets: 'result' (outcome 0/1/2 = home win,
- * draw, away win) and 'totals' (outcome 0 = over `line` goals, 1 = under). Null while the
- * match is not finished; 'void' when it was cancelled or awarded.
+ * draw, away win), 'totals' (outcome 0 = over `line` goals, 1 = under) and 'selection' (a
+ * betting-slip cell id such as "fh:total:over:0.5", which may need the half-time score). Null
+ * while the match is not finished; 'void' when it was cancelled or awarded, or when a finished
+ * match has no half-time score for a selection that needs one.
  */
-export function settleSelection(raw, {market = 'result', line, outcome}) {
+export function settleSelection(raw, {market = 'result', line, outcome, selection}) {
   const score = finalScore(raw);
   if (!score) return null;
   if (score.void) return {result: 'void', score: null};
   const text = `${score.home}–${score.away}`;
+  if (market === 'selection') {
+    const half = halfTimeScore(raw);
+    const won = selectionOutcome(selection, score, half);
+    const detail = half ? `${text} (HT ${half.home}–${half.away})` : text;
+    return {result: won === null ? 'void' : won ? 'correct' : 'incorrect', score: detail};
+  }
   if (market === 'totals') {
     const over = score.home + score.away > Number(line);
     return {result: (outcome === 0) === over ? 'correct' : 'incorrect', score: text};
@@ -169,7 +187,7 @@ export function fdRegulation(raw) {
 export function fdSettlementRaw(raw) {
   return {
     fixture: {status: {short: normalizeFD(raw)?.status}},
-    score: {fulltime: fdRegulation(raw)},
+    score: {fulltime: fdRegulation(raw), halftime: raw?.score?.halfTime ?? null},
   };
 }
 export function teamKey(name) {

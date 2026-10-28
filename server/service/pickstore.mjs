@@ -10,6 +10,11 @@ const fromRow = (r) => ({
   id: r.pick_id,
   canonical: r.canonical,
   ...(r.market === 'totals' ? {market: 'totals', line: Number(r.line)} : {}),
+  ...(r.market === 'selection'
+    ? {market: 'selection', selection: r.selection, probability: Number(r.probability)}
+    : {}),
+  ...(r.price !== null && r.price !== undefined ? {price: Number(r.price)} : {}),
+  ...(r.slip ? {slip: r.slip} : {}),
   outcome: r.outcome,
   createdAt: Date.parse(r.created_at),
   forecast: r.forecast,
@@ -18,13 +23,18 @@ const fromRow = (r) => ({
   ...(r.settled_at ? {settledAt: Date.parse(r.settled_at)} : {}),
 });
 
-// The market columns are only sent for Over/Under picks, so a database created before they
-// existed keeps accepting home/draw/away picks.
+// The newer columns are only sent when a pick uses them, so a database created before they
+// existed keeps accepting plain home/draw/away picks.
 const toRow = (userId, p) => ({
   user_id: userId,
   pick_id: p.id,
   canonical: p.canonical,
   ...(p.market === 'totals' ? {market: 'totals', line: p.line} : {}),
+  ...(p.market === 'selection'
+    ? {market: 'selection', selection: p.selection, probability: p.probability}
+    : {}),
+  ...(p.price ? {price: p.price} : {}),
+  ...(p.slip ? {slip: p.slip} : {}),
   outcome: p.outcome,
   created_at: new Date(p.createdAt).toISOString(),
   forecast: p.forecast,
@@ -79,12 +89,13 @@ export function createPickStore({storage, supabase}) {
           ignoreDuplicates: true,
         });
       } catch (e) {
-        // An Over/Under pick on a database that predates its columns: say what to run.
-        if (pick.market === 'totals' && /column|PGRST204/i.test(String(e?.detail ?? '')))
+        // A pick using newer columns on a database that predates them: say what to run.
+        const newer = pick.market !== 'result' || pick.price || pick.slip;
+        if (newer && /column|PGRST204/i.test(String(e?.detail ?? '')))
           throw new AppError(
             503,
             'schema',
-            'Over/Under picks need a small database update: run supabase/schema.sql again in Supabase (it is safe to re-run).',
+            'This kind of pick needs a small database update: run supabase/schema.sql again in Supabase (it is safe to re-run).',
           );
         throw e;
       }

@@ -135,7 +135,13 @@ export function makeHandler(deps, env = process.env) {
       }
 
       if (body.action === 'save')
-        return json(await service.save(sid, body.forecastId, body.outcome, body.market, body.line));
+        return json(
+          await service.save(sid, body.forecastId, body.outcome, body.market, body.line, {
+            selection: body.selection,
+            price: body.price,
+            slip: body.slip,
+          }),
+        );
       if (body.action === 'settle') return json(await service.settlePicks(sid));
       if (body.action === 'delete-pick') return json(await service.deletePick(sid, body.pickId));
 

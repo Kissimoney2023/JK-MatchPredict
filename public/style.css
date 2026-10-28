@@ -2161,7 +2161,89 @@ button.book-cell[aria-pressed='true'] {
 }
 .combo-legs {
   margin: 0 0 var(--space-3);
-  padding-left: var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+.combo-leg {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+.combo-leg:first-child {
+  border-top: 0;
+}
+.combo-leg input {
+  width: 100%;
+  font-family: var(--font-mono);
+}
+.combo-save {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.combo-save .slip-odds {
+  margin: 0;
+}
+
+/* ---------- Slips on My picks ---------- */
+.slips {
+  margin: var(--space-3) 0;
+}
+.slip-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-3);
+}
+.slip-card {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.slip-card.slip-won {
+  border-left-color: var(--accent);
+}
+.slip-card.slip-lost {
+  border-left-color: #fca5a5;
+}
+.slip-card-legs {
+  margin: var(--space-2) 0;
+  padding: 0;
+  list-style: none;
+}
+.slip-card-leg {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+  padding: 3px 0;
+}
+.slip-card-what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .combo-leg {
+    grid-template-columns: minmax(0, 1fr) 80px;
+  }
+  .combo-leg .text-button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .combo-save {
+    grid-template-columns: 1fr;
+  }
+  .slip-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---------- Slip legs with prices ---------- */
@@ -2207,4 +2289,8 @@ button.book-cell[aria-pressed='true'] {
   .slip-prices {
     grid-template-columns: 1fr;
   }
+}
+.slip-card.slip-lost > .match-top .tag {
+  border-color: rgb(252 165 165 / 0.4);
+  color: #fca5a5;
 }

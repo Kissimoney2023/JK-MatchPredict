@@ -341,7 +341,7 @@ function fullTimeTest(id) {
   const [kind, ...rest] = String(id).split(':');
   if (kind === 'result') {
     const n = Number(rest[0]);
-    return (h, a) => (h > a ? 0 : h === a ? 1 : 2) === n;
+    return [0, 1, 2].includes(n) ? (h, a) => (h > a ? 0 : h === a ? 1 : 2) === n : null;
   }
   if (kind === 'dc')
     return (
@@ -355,17 +355,59 @@ function fullTimeTest(id) {
     return rest[0] === 'yes' ? (h, a) => h > 0 && a > 0 : (h, a) => h === 0 || a === 0;
   if (kind === 'total') {
     const line = Number(rest[1]);
+    if (!Number.isFinite(line) || !['over', 'under'].includes(rest[0])) return null;
     return rest[0] === 'over' ? (h, a) => h + a > line : (h, a) => h + a < line;
   }
   if (kind === 'hcap') {
     const line = Number(rest[0]) - Number(rest[1]);
     const side = rest[2];
+    if (!Number.isFinite(line) || !['1', 'X', '2'].includes(side)) return null;
     return (h, a) => {
       const margin = h - a + line;
       return side === '1' ? margin > 0 : side === 'X' ? margin === 0 : margin < 0;
     };
   }
-  if (kind === 'score') return (h, a) => h === Number(rest[0]) && a === Number(rest[1]);
+  if (kind === 'score') {
+    const [sh, sa] = rest.map(Number);
+    return Number.isInteger(sh) && Number.isInteger(sa) ? (h, a) => h === sh && a === sa : null;
+  }
+  return null;
+}
+
+/**
+ * Selections a pick can be settled on: every full-time market plus the first-half and
+ * halftime/fulltime ones. Not the first goal, which no final score tells.
+ */
+export function isPickableSelection(id) {
+  const s = String(id ?? '');
+  if (fullTimeTest(s)) return true;
+  if (/^htft:[012]:[012]$/.test(s)) return true;
+  return s.startsWith('fh:') && Boolean(fullTimeTest(s.slice(3)));
+}
+
+const outcomeOf = (s) => (s.home > s.away ? 0 : s.home === s.away ? 1 : 2);
+const validScore = (s) => Number.isInteger(s?.home) && Number.isInteger(s?.away);
+
+/**
+ * Whether a selection won, from the full-time score and, for first-half and halftime/fulltime
+ * selections, the half-time score. Null when it cannot be told: an unknown id, the first goal,
+ * or a half-time selection without a half-time score.
+ */
+export function selectionOutcome(id, full, half = null) {
+  if (!validScore(full)) return null;
+  const s = String(id ?? '');
+  const test = fullTimeTest(s);
+  if (test) return test(full.home, full.away);
+  const [kind, ...rest] = s.split(':');
+  if (kind === 'htft') {
+    if (!validScore(half) || !/^htft:[012]:[012]$/.test(s)) return null;
+    return outcomeOf(half) === Number(rest[0]) && outcomeOf(full) === Number(rest[1]);
+  }
+  if (kind === 'fh') {
+    const inner = fullTimeTest(rest.join(':'));
+    if (!inner || !validScore(half)) return null;
+    return inner(half.home, half.away);
+  }
   return null;
 }
 

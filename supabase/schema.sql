@@ -49,6 +49,14 @@ create index if not exists picks_user_created_idx on public.picks (user_id, crea
 alter table public.picks add column if not exists market text not null default 'result';
 alter table public.picks add column if not exists line   numeric;
 
+-- Betting-slip picks (added later). market 'selection' keeps the slip cell id in `selection`
+-- (e.g. "fh:total:over:0.5") and the forecast's chance for it at the time in `probability`.
+-- Any pick may record the price it was placed at and the label of the slip it belongs to.
+alter table public.picks add column if not exists selection   text;
+alter table public.picks add column if not exists probability numeric;
+alter table public.picks add column if not exists price       numeric;
+alter table public.picks add column if not exists slip        text;
+
 alter table public.profiles enable row level security;
 alter table public.sessions enable row level security;
 alter table public.picks    enable row level security;

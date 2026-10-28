@@ -5,7 +5,8 @@ import {run} from '../busy.js';
 import {message} from '../dom.js';
 import {renderPickStats} from './pickstats.js';
 import {renderReminders} from './reminders.js';
-import {pickLabel, pickProbability} from '/pickstats.js';
+import {pickLabel, pickPrice, pickProbability} from '/pickstats.js';
+import {renderSlips} from './slips.js';
 import {fairOdds} from '/analysis.js';
 import {renderSlip, slipToggleHtml} from './slip.js';
 
@@ -21,10 +22,11 @@ const clvLine = (p) =>
 function pickCard(p) {
   const f = p.forecast;
   const chance = pickProbability(p);
-  const chanceText = Number.isFinite(chance)
-    ? ` · ${chance}% · fair ${fairOdds(chance)?.toFixed(2) ?? '—'}`
-    : '';
-  return `<article class="match"><div class="match-top"><span>${esc(f.competition)}</span><span class="tag">${esc(p.result || 'Pending')}</span></div><h3>${esc(f.home)} vs ${esc(f.away)}</h3><p><strong>${esc(pickLabel(p) + chanceText)}</strong></p><p class="muted">Kickoff ${esc(formatDate(f.kickoff))}<br>Saved ${esc(formatDate(p.createdAt))}${p.score ? '<br>Regulation score ' + esc(p.score) : ''}<br>${esc(f.source)}${clvLine(p)}</p>${canRemove(p) ? `<div class="pick-actions"><button class="text-button danger" data-remove-pick="${esc(p.id)}">Remove pick</button><small class="muted">Until kickoff</small>${slipToggleHtml(p)}</div>` : ''}</article>`;
+  const price = pickPrice(p);
+  const chanceText =
+    (Number.isFinite(chance) ? ` · ${chance}% · fair ${fairOdds(chance)?.toFixed(2) ?? '—'}` : '') +
+    (price ? ` · at ${price.toFixed(2)}` : '');
+  return `<article class="match"><div class="match-top"><span>${esc(f.competition)}${p.slip ? ' · <span class="tag">' + esc(p.slip) + '</span>' : ''}</span><span class="tag">${esc(p.result || 'Pending')}</span></div><h3>${esc(f.home)} vs ${esc(f.away)}</h3><p><strong>${esc(pickLabel(p) + chanceText)}</strong></p><p class="muted">Kickoff ${esc(formatDate(f.kickoff))}<br>Saved ${esc(formatDate(p.createdAt))}${p.score ? '<br>Regulation score ' + esc(p.score) : ''}<br>${esc(f.source)}${clvLine(p)}</p>${canRemove(p) ? `<div class="pick-actions"><button class="text-button danger" data-remove-pick="${esc(p.id)}">Remove pick</button><small class="muted">Until kickoff</small>${slipToggleHtml(p)}</div>` : ''}</article>`;
 }
 
 const EMPTY_PICKS =
@@ -34,6 +36,7 @@ export async function loadPicks() {
   const data = await api('picks');
   state.picks = data.picks;
   renderPickStats(state.picks);
+  renderSlips(state.picks);
   renderReminders();
   $('#pick-count').textContent = state.picks.length;
   $('#picks').innerHTML = state.picks.length ? state.picks.map(pickCard).join('') : EMPTY_PICKS;
