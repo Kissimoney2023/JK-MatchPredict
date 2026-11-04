@@ -14,6 +14,11 @@ export const SA_LEAGUES = {
   BSA: 'brazil',
   UEL: 'uel',
   UECL: 'uecl',
+  MLS: 'mls',
+  LMX: 'ligamx',
+  SPL: 'scotland',
+  ARG: 'argentina',
+  NWSL: 'nwsl',
 };
 export const saLeagueFor = (fdCode) => SA_LEAGUES[fdCode] ?? null;
 
@@ -21,10 +26,28 @@ export const saLeagueFor = (fdCode) => SA_LEAGUES[fdCode] ?? null;
  * Competitions neither free football API lists, served from StrikerAPI alone: fixtures and
  * results from its schedule and games, forecasts from its market line. The codes are the
  * app's own (they look like football-data.org codes so every code-keyed feature works).
+ * Every league StrikerAPI prices is here, so its lines lead the forecast wherever it has one.
  */
 export const SA_ONLY_COMPETITIONS = [
-  {code: 'UEL', league: 'uel', name: 'UEFA Europa League', country: 'Europe'},
-  {code: 'UECL', league: 'uecl', name: 'UEFA Conference League', country: 'Europe'},
+  {code: 'UEL', league: 'uel', name: 'UEFA Europa League', country: 'Europe', type: 'CUP'},
+  {code: 'UECL', league: 'uecl', name: 'UEFA Conference League', country: 'Europe', type: 'CUP'},
+  {code: 'MLS', league: 'mls', name: 'Major League Soccer', country: 'USA', type: 'LEAGUE'},
+  {code: 'LMX', league: 'ligamx', name: 'Liga MX', country: 'Mexico', type: 'LEAGUE'},
+  {
+    code: 'SPL',
+    league: 'scotland',
+    name: 'Scottish Premiership',
+    country: 'Scotland',
+    type: 'LEAGUE',
+  },
+  {
+    code: 'ARG',
+    league: 'argentina',
+    name: 'Liga Profesional',
+    country: 'Argentina',
+    type: 'LEAGUE',
+  },
+  {code: 'NWSL', league: 'nwsl', name: 'NWSL', country: 'USA', type: 'LEAGUE'},
 ];
 
 /** StrikerAPI game status -> the app's (API-Football style) short status. */

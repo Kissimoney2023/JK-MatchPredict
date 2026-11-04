@@ -18,6 +18,10 @@ const FEATURED_FD = [
   'DED',
   'ELC',
   'BSA',
+  'MLS',
+  'LMX',
+  'SPL',
+  'ARG',
   'WC',
 ];
 
@@ -66,7 +70,7 @@ export function createCatalog({env, provider, strikerApi}) {
         season: null,
         source: 'StrikerAPI',
         saOnly: true,
-        type: 'CUP',
+        type: c.type ?? 'CUP',
       });
 
     if (env.API_FOOTBALL_KEY) {

@@ -229,3 +229,34 @@ test('standings for a StrikerAPI-only competition skip football-data.org', async
   assert.ok(table.groups.length >= 1);
   assert.ok(!x.calls.some((c) => c.includes('competitions')));
 });
+
+test('every league StrikerAPI covers is a competition when only StrikerAPI is configured', async () => {
+  const {saLeagueFor} = await import('../server/strikerapi.mjs');
+  const x = setup();
+  const {leagues} = await x.service.catalog();
+  const byCode = Object.fromEntries(leagues.map((l) => [l.fdCode, l]));
+  for (const [code, slug, featured] of [
+    ['MLS', 'mls', true],
+    ['LMX', 'ligamx', true],
+    ['SPL', 'scotland', true],
+    ['ARG', 'argentina', true],
+    ['NWSL', 'nwsl', false],
+  ]) {
+    assert.equal(saLeagueFor(code), slug, code);
+    const l = byCode[code];
+    assert.ok(l, `${code} listed`);
+    assert.equal(l.key, 'sa:' + slug);
+    assert.equal(l.saOnly, true);
+    assert.equal(l.type, 'LEAGUE');
+    assert.equal(l.featured, featured, `${code} featured`);
+  }
+  assert.equal(byCode.UEL.type, 'CUP');
+  // The fixture list of such a league asks StrikerAPI for that league's schedule.
+  x.calls.length = 0;
+  const list = await x.service.fixtures(
+    new URLSearchParams({league: 'sa:mls', from: '2026-10-15', to: '2026-10-16'}),
+  );
+  assert.deepEqual(x.calls, ['get_schedule mls']);
+  assert.equal(list.fixtures[0].competition, 'Major League Soccer');
+  assert.equal(list.fixtures[0].fdCode, 'MLS');
+});
