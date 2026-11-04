@@ -14,7 +14,7 @@ export function renderConnection(error = '') {
   const providers = state.providers
     .map(
       (p) =>
-        `${esc(p.name)}: ${p.configured ? 'key configured' : p.role === 'Enrichment' ? 'optional' : 'key needed'}`,
+        `${esc(p.name)}: ${p.disabled ? 'switched off' : p.configured ? 'key configured' : p.role === 'Enrichment' ? 'optional' : 'key needed'}`,
     )
     .join(' · ');
   const title = state.connected ? 'Football data connected' : 'Connect your football data';

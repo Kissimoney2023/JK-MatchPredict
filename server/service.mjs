@@ -25,8 +25,14 @@ import {settle} from './model.mjs';
 export {AppError} from './errors.mjs';
 export {hash, dates} from './util.mjs';
 
+const off = (v) => ['off', 'false', '0', 'no'].includes(String(v ?? '').toLowerCase());
+
 /** Wires the football service from its parts. All I/O is injected for testability. */
-export function createService({env, store, fetcher = fetch, now = Date.now, sendPush}) {
+export function createService({env: rawEnv, store, fetcher = fetch, now = Date.now, sendPush}) {
+  // API_FOOTBALL=off leaves API-Football out while its key stays set (a suspended account, a
+  // used-up quota): every part then behaves as if there were no key.
+  const apiFootballOff = off(rawEnv.API_FOOTBALL);
+  const env = apiFootballOff ? {...rawEnv, API_FOOTBALL_KEY: ''} : rawEnv;
   const storage = createStorage({store, now});
   const provider = createProviderClient({env, store, fetcher, now, storage});
   const strikerApi = createStrikerApi({env, provider, now});
@@ -117,7 +123,12 @@ export function createService({env, store, fetcher = fetch, now = Date.now, send
     accounts: accounts.info(),
     push: reminders.info(),
     providers: [
-      {name: 'API-Football', configured: !!env.API_FOOTBALL_KEY, role: 'Primary'},
+      {
+        name: 'API-Football',
+        configured: !!env.API_FOOTBALL_KEY,
+        role: 'Primary',
+        ...(apiFootballOff ? {disabled: true} : {}),
+      },
       {name: 'football-data.org', configured: !!env.FOOTBALL_DATA_ORG_KEY, role: 'Fallback'},
       {name: 'StrikerAPI', configured: !!env.STRIKERAPI_API_KEY, role: 'Enrichment'},
     ],

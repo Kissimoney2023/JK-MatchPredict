@@ -42,14 +42,19 @@ export function createDiagnostics({env, now, storage, store, supabase, accountPr
     }
   }
 
+  const switchedOff = ['off', 'false', '0', 'no'].includes(
+    String(env.API_FOOTBALL ?? '').toLowerCase(),
+  );
+
   function footballItems() {
     const set = [
       env.API_FOOTBALL_KEY && 'API-Football',
       env.FOOTBALL_DATA_ORG_KEY && 'football-data.org',
     ].filter(Boolean);
+    const note = switchedOff ? ' API-Football is switched off (API_FOOTBALL=off).' : '';
     const out = [
       set.length
-        ? item('football', 'Football data', 'ok', `Connected: ${set.join(' and ')}.`)
+        ? item('football', 'Football data', 'ok', `Connected: ${set.join(' and ')}.${note}`)
         : item(
             'football',
             'Football data',
