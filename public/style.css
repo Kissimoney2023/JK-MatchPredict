@@ -2294,3 +2294,55 @@ button.book-cell[aria-pressed='true'] {
   border-color: rgb(252 165 165 / 0.4);
   color: #fca5a5;
 }
+
+/* ---------- Build my ticket ---------- */
+.ticket-block {
+  margin: var(--space-3) 0;
+}
+.ticket-table {
+  width: 100%;
+  min-width: 600px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.ticket-table th,
+.ticket-table td {
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.ticket-table th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ticket-table .num {
+  text-align: right;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.ticket-table tr.recommended td {
+  background: var(--accent-soft);
+}
+.manual-leg {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.manual-leg .slip-odds {
+  margin: 0;
+}
+.slip-leg-price {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+}
+@media (max-width: 640px) {
+  .manual-leg {
+    grid-template-columns: 1fr;
+  }
+}

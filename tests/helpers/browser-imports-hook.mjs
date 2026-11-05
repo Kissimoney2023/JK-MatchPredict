@@ -6,6 +6,7 @@ const SHARED = {
   '/value.js': 'server/value.mjs',
   '/calibration.js': 'server/calibration.mjs',
   '/scores.js': 'server/scores.mjs',
+  '/ticket.js': 'server/ticket.mjs',
 };
 
 export async function resolve(specifier, context, next) {
