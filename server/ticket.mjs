@@ -210,3 +210,54 @@ export function ticketOptions(rawLegs, {stake = 1} = {}) {
   const top = eligible.reduce((a, b) => (b.profitProbability > a.profitProbability ? b : a));
   return all.map((o) => ({...o, recommended: o === top}));
 }
+
+/**
+ * The lines of a shape by its option id ("accumulator", "split-3", "system-7", "drop-2") for
+ * legs already in chance order, so a shape bought can be rebuilt later. Null for an unknown id.
+ */
+export function shapeLines(id, legs) {
+  const n = legs.length;
+  if (!n) return null;
+  if (id === 'accumulator') return lines.accumulator(n);
+  const m = /^(split|system|drop)-(\d+)$/.exec(String(id ?? ''));
+  if (!m) return null;
+  const k = Number(m[2]);
+  if (m[1] === 'split') return k >= 1 ? lines.split(n, k) : null;
+  if (m[1] === 'system') return k >= 1 && k < n ? lines.system(n, k) : null;
+  return k >= 1 && k < n ? lines.dropWeakest(legs, k) : null;
+}
+
+/**
+ * What a bought shape returned, from the legs' results (`correct`, `incorrect`, `void` or
+ * open) and prices: a line pays its share of the stake times the product of its legs' prices
+ * once every leg has won; a void leg drops out at a price of 1; a lost leg settles the line
+ * at nothing; a line with an open leg and no lost one is still pending. Legs without a price
+ * are taken at fair odds (flagged). `profit` counts the lines settled so far.
+ */
+export function shapeReturn(legs, ticketLines, {stake = 1} = {}) {
+  if (!legs?.length || !ticketLines?.length) return null;
+  const perLine = stake / ticketLines.length;
+  let returned = 0;
+  let pending = false;
+  let linesWon = 0;
+  for (const line of ticketLines) {
+    const results = line.map((i) => legs[i]?.result ?? null);
+    if (results.includes('incorrect')) continue;
+    if (results.some((r) => r !== 'correct' && r !== 'void')) {
+      pending = true;
+      continue;
+    }
+    const payout =
+      perLine * line.reduce((acc, i) => acc * (legs[i].result === 'void' ? 1 : oddsOf(legs[i])), 1);
+    returned += payout;
+    linesWon++;
+  }
+  return {
+    stake,
+    returned: round(returned, 2),
+    profit: round(returned - stake, 2),
+    pending,
+    linesWon,
+    fairPriced: legs.some((l) => !(Number(l.odds) > 1)),
+  };
+}

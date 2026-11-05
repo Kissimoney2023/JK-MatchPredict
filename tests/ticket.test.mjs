@@ -112,3 +112,73 @@ test('the slip shows the ticket options and takes legs by hand', async () => {
   // Two legs: the builder has nothing to say yet, but still invites more legs.
   assert.doesNotMatch(slipHtml(picks.slice(0, 2), ''), /Recommended/);
 });
+
+test('a bought shape is rebuilt from its id and settled from the legs’ results and prices', async () => {
+  const {shapeLines, shapeReturn} = await import('../server/ticket.mjs');
+  const legs = [
+    {label: 'a', p: 80, odds: 1.25, result: 'correct'},
+    {label: 'b', p: 70, odds: 1.45, result: 'correct'},
+    {label: 'c', p: 60, odds: 1.7, result: 'incorrect'},
+    {label: 'd', p: 55, odds: 1.8, result: 'correct'},
+  ];
+  assert.deepEqual(shapeLines('accumulator', legs), [[0, 1, 2, 3]]);
+  assert.equal(shapeLines('system-3', legs).length, 4);
+  assert.deepEqual(shapeLines('drop-1', legs), [[0, 1, 2]], 'legs are already in chance order');
+  assert.equal(shapeLines('nonsense', legs), null);
+  const acc = shapeReturn(legs, shapeLines('accumulator', legs), {stake: 5});
+  assert.equal(acc.returned, 0);
+  assert.equal(acc.profit, -5);
+  assert.equal(acc.pending, false);
+  // 3 of 4: one line (a, b, d) survives: 5/4 × 1.25 × 1.45 × 1.8
+  const sys = shapeReturn(legs, shapeLines('system-3', legs), {stake: 5});
+  assert.equal(sys.returned, 4.08, '(5/4 × 1.25 × 1.45 × 1.8) in cents');
+  assert.equal(sys.linesWon, 1);
+  assert.ok(sys.profit < 0);
+  // A void leg drops out of its line at a price of 1; an open leg keeps the shape pending.
+  const withVoid = legs.map((l) => (l.label === 'c' ? {...l, result: 'void'} : l));
+  close(shapeReturn(withVoid, shapeLines('accumulator', withVoid), {stake: 5}).returned, 16.31);
+  const open = legs.map((l) => (l.label === 'd' ? {...l, result: null} : l));
+  assert.equal(shapeReturn(open, shapeLines('system-3', open), {stake: 5}).pending, true);
+  assert.equal(
+    shapeReturn(open, shapeLines('accumulator', open), {stake: 5}).pending,
+    false,
+    'a lost leg settles the whole Kombi',
+  );
+  assert.equal(shapeReturn(legs, [[0, 1]], {stake: 5}).fairPriced, false);
+});
+
+test('the slips block records the shape bought and what it returned', async () => {
+  const {slipsBlockForTest} = await import('../public/js/views/slips.js');
+  const sel = (selection, probability, price, result) => ({
+    id: selection,
+    market: 'selection',
+    selection,
+    outcome: 0,
+    probability,
+    price,
+    slip: 'Wed 4 Nov',
+    result,
+    forecast: {
+      home: 'H' + selection.slice(-1),
+      away: 'A',
+      p: [50, 30, 20],
+      kickoff: '2026-11-04T20:00:00Z',
+      competition: 'CL',
+    },
+  });
+  const picks = [
+    sel('result:0', 80, 1.25, 'correct'),
+    sel('result:1', 70, 1.45, 'correct'),
+    sel('result:2', 60, 1.7, 'incorrect'),
+    sel('dc:1X', 55, 1.8, 'correct'),
+  ];
+  const html = slipsBlockForTest(picks, {shapes: {'Wed 4 Nov': {shape: 'system-3', stake: 5}}});
+  assert.match(html, /data-slip-shape="Wed 4 Nov"/);
+  assert.match(html, /option value="system-3" selected/);
+  assert.match(html, /data-slip-stake="Wed 4 Nov"[^>]*value="5"/);
+  assert.match(html, /returned 4\.08/);
+  assert.match(html, /Recommended shape[^<]*would have returned/);
+  const none = slipsBlockForTest(picks, {shapes: {}});
+  assert.match(none, /data-slip-shape="Wed 4 Nov"/);
+  assert.doesNotMatch(none, /returned \d/);
+});
